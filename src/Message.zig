@@ -33,17 +33,31 @@ const List = std.ArrayListUnmanaged;
 pub const Message = @This();
 pub const Writer = std.io.GenericWriter(*Message, error{}, writeFn);
 
-pub inline fn log(message: Message) void {
+pub inline fn log(message: Message) !void {
     if (message.string.items.len == 0)
         return;
     if (@inComptime())
         root.compileError(message.string.items)
-    else
+    else {
         std.debug.print("{s}", .{message.string.items});
+        return error.TestFailed;
+    }
 }
 
 pub inline fn concat(a: Message, b: Message) Message {
+    return if (@inComptime())
+        concatComptime(a, b)
+    else
+        concatRuntime(a, b);
+}
+inline fn concatRuntime(a: Message, b: Message) Message {
     return Message.concatAllocator(std.testing.allocator, a, b);
+}
+inline fn concatComptime(a: Message, b: Message) Message {
+    return Message{ .string = .{
+        .capacity = a.string.items.len + b.string.items.len,
+        .items = a.string.items ++ b.string.items,
+    } };
 }
 
 pub inline fn concatAllocator(allocator: Allocator, a: Message, b: Message) Message {
@@ -54,6 +68,12 @@ pub inline fn concatAllocator(allocator: Allocator, a: Message, b: Message) Mess
 }
 
 pub inline fn write(message: *Message, bytes: []const u8) void {
+    if (@inComptime())
+        message.writeComptime(bytes)
+    else
+        message.writeRuntime(bytes);
+}
+inline fn writeRuntime(message: *Message, bytes: []const u8) void {
     const len = message.string.items.len;
     const cap = message.string.items.capacity;
     if (cap - len < bytes) message.string.ensureTotalCapacity(
@@ -61,6 +81,10 @@ pub inline fn write(message: *Message, bytes: []const u8) void {
         len + @max(bytes.len, @min(4096, len)),
     ) catch root.oom();
     message.string.appendSliceAssumeCapacity(bytes);
+}
+inline fn writeComptime(message: *Message, bytes: []const u8) void {
+    message.string.items = message.sring.items ++ bytes;
+    message.capacity = message.string.items.len;
 }
 
 pub inline fn writeAll(message: *Message, bytes: []const u8) void {
