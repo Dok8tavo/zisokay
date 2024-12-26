@@ -21,16 +21,40 @@
 // SOFTWARE.
 //
 
-const result = @import("result.zig");
-const std = @import("std");
+pub inline fn Result(comptime P: type, comptime F: type) type {
+    return union(enum) {
+        pass: Pass,
+        fail: Fail,
 
-pub const Message = @import("Message.zig");
-pub const Result = result.Result;
+        const Self = @This();
 
-pub inline fn oom() noreturn {
-    @panic("Out of memory");
-}
+        pub const Pass = P;
+        pub const Fail = F;
 
-pub inline fn compileError(comptime fmt: []const u8, comptime args: anytype) noreturn {
-    return std.fmt.comptimePrint(fmt, args);
+        pub const Reversed = Result(Fail, Pass);
+
+        pub inline fn reverse(result: Self) Reversed {
+            return switch (result) {
+                .pass => |pass| Reversed{ .fail = pass },
+                .fail => |fail| Reversed{ .pass = fail },
+            };
+        }
+
+        pub inline fn nab(result: Self, capture: *Fail) ?Pass {
+            return switch (result) {
+                .pass => |pass| pass,
+                .fail => |fail| {
+                    capture.* = fail;
+                    return null;
+                },
+            };
+        }
+
+        pub inline fn get(result: Self) ?Pass {
+            return switch (result) {
+                .pass => |pass| pass,
+                .fail => null,
+            };
+        }
+    };
 }
