@@ -52,8 +52,54 @@ pub inline fn write(message: *Message, bytes: []const u8) void {
     message.string.appendSliceAssumeCapacity(bytes);
 }
 
-pub inline fn print(message: *Message, comptime fmt: []const u8, args: anytype) void {
-    message.writer().print(fmt, args) catch unreachable;
+pub inline fn writeAll(message: *Message, bytes: []const u8) void {
+    message.writer().writeAll(bytes) catch unreachable;
+}
+
+pub inline fn print(message: *Message, comptime format: []const u8, args: anytype) void {
+    message.writer().print(format, args) catch unreachable;
+}
+
+pub inline fn writeByte(message: *Message, byte: u8) void {
+    message.writer().writeByte(byte) catch unreachable;
+}
+
+pub inline fn writeByteNTimes(message: *Message, byte: u8, n: usize) void {
+    message.writer().writeByteNTimes(byte, n) catch unreachable;
+}
+
+pub inline fn writeBytesNTimes(message: *Message, bytes: []const u8, n: usize) void {
+    message.writer().writeBytesNTimes(bytes, n) catch unreachable;
+}
+
+pub inline fn writeInt(
+    message: *Message,
+    comptime T: type,
+    value: T,
+    endian: std.builtin.Endian,
+) void {
+    return message.writer().writeInt(T, value, endian) catch unreachable;
+}
+
+pub inline fn writeStruct(message: *Message, value: anytype) void {
+    return message.writer().writeStruct(value) catch unreachable;
+}
+
+pub inline fn writeStructEndian(
+    message: *Message,
+    value: anytype,
+    endian: std.builtin.Endian,
+) void {
+    message.writer().writeStructEndian(value, endian) catch unreachable;
+}
+
+pub const any = root.compileError(
+    \\The `{s}` type doesn't use the `any` name from `GenericWriter(...).any`
+    \\You might want to use `.anyWriter` instead!
+);
+
+pub inline fn anyWriter(message: *Message) std.io.AnyWriter {
+    return message.writer().any();
 }
 
 pub inline fn writer(message: *Message) Writer {
