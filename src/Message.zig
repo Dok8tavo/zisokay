@@ -42,6 +42,17 @@ pub inline fn log(message: Message) void {
         std.debug.print("{s}", .{message.string.items});
 }
 
+pub inline fn concat(a: Message, b: Message) Message {
+    return Message.concatAllocator(std.testing.allocator, a, b);
+}
+
+pub inline fn concatAllocator(allocator: Allocator, a: Message, b: Message) Message {
+    var c = Message{ .allocator = allocator };
+    c.write(a.string.items);
+    c.write(b.string.items);
+    return c;
+}
+
 pub inline fn write(message: *Message, bytes: []const u8) void {
     const len = message.string.items.len;
     const cap = message.string.items.capacity;
