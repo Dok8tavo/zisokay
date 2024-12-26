@@ -33,6 +33,13 @@ pub inline fn Result(comptime P: type, comptime F: type) type {
 
         pub const Reversed = Result(Fail, Pass);
 
+        pub inline fn expect(result: Self) error{FailedResult}!Pass {
+            return switch (result) {
+                .pass => |pass| pass,
+                .fail => error.FailedResult,
+            };
+        }
+
         pub inline fn reverse(result: Self) Reversed {
             return switch (result) {
                 .pass => |pass| Reversed{ .fail = pass },
