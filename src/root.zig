@@ -21,7 +21,51 @@
 // SOFTWARE.
 //
 
-pub fn Result(comptime P: type, comptime F: type) type {
+const std = @import("std");
+
+const Allocator = std.mem.Allocator;
+const List = std.ArrayListUnmanaged;
+
+pub const Message = struct {
+    allocator: Allocator = std.testing.allocator,
+    string: List(u8) = .{},
+
+    pub const Writer = std.io.GenericWriter(*Message, error{}, writeFn);
+
+    pub inline fn send(message: Message) void {
+        if (message.string.items.len == 0)
+            return;
+        if (@inComptime())
+            compileError(message.string.items)
+        else
+            std.debug.print("{s}", .{message.string.items});
+    }
+
+    pub inline fn write(message: *Message, bytes: []const u8) void {
+        const len = message.string.items.len;
+        const cap = message.string.items.capacity;
+        if (cap - len < bytes) message.string.ensureTotalCapacity(
+            message.allocator,
+            len + @max(bytes.len, @min(4096, len)),
+        ) catch oom();
+        message.string.appendSliceAssumeCapacity(bytes);
+    }
+
+    pub inline fn print(message: *Message, comptime fmt: []const u8, args: anytype) void {
+        message.writer().print(fmt, args) catch unreachable;
+    }
+
+    pub inline fn writer(message: *Message) Writer {
+        return .{ .context = message };
+    }
+
+    pub inline fn writeFn(message: *Message, bytes: []const u8) error{}!usize {
+        message.write(bytes);
+        return bytes.len;
+    }
+};
+
+pub inline fn Result(comptime P: type, comptime F: type) type {
     return union(enum) {
         pass: Pass,
         fail: Fail,
@@ -33,14 +77,14 @@ pub fn Result(comptime P: type, comptime F: type) type {
 
         pub const Reversed = Result(Fail, Pass);
 
-        pub fn reverse(result: Self) Reversed {
+        pub inline fn reverse(result: Self) Reversed {
             return switch (result) {
                 .pass => |pass| Reversed{ .fail = pass },
                 .fail => |fail| Reversed{ .pass = fail },
             };
         }
 
-        pub fn nab(result: Self, capture: *Fail) ?Pass {
+        pub inline fn nab(result: Self, capture: *Fail) ?Pass {
             return switch (result) {
                 .pass => |pass| pass,
                 .fail => |fail| {
@@ -50,11 +94,19 @@ pub fn Result(comptime P: type, comptime F: type) type {
             };
         }
 
-        pub fn get(result: Self) ?Pass {
+        pub inline fn get(result: Self) ?Pass {
             return switch (result) {
                 .pass => |pass| pass,
                 .fail => null,
             };
         }
     };
+}
+
+pub inline fn oom() noreturn {
+    @panic("Out of memory");
+}
+
+pub inline fn compileError(comptime fmt: []const u8, comptime args: anytype) noreturn {
+    return std.fmt.comptimePrint(fmt, args);
 }
