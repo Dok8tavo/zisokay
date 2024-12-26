@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const object = b.addObject(.{
+        .name = "zisokay",
         .root_source_file = root,
         .target = target,
         .optimize = optimize,
