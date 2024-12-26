@@ -33,7 +33,7 @@ const List = std.ArrayListUnmanaged;
 pub const Message = @This();
 pub const Writer = std.io.GenericWriter(*Message, error{}, writeFn);
 
-pub inline fn send(message: Message) void {
+pub inline fn log(message: Message) void {
     if (message.string.items.len == 0)
         return;
     if (@inComptime())
