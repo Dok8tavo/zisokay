@@ -24,13 +24,43 @@
 const result = @import("result.zig");
 const std = @import("std");
 
-pub const Message = @import("Message.zig");
 pub const Result = result.Result;
+pub const Test = @import("Test.zig");
+pub const eq = @import("eq.zig");
+
+test {
+    _ = Result;
+    _ = Test;
+    _ = eq;
+}
 
 pub inline fn oom() noreturn {
     @panic("Out of memory");
 }
 
 pub inline fn compileError(comptime fmt: []const u8, comptime args: anytype) noreturn {
-    return std.fmt.comptimePrint(fmt, args);
+    @compileError(std.fmt.comptimePrint(fmt, args));
+}
+
+pub inline fn isStringType(comptime T: type) bool {
+    const info = @typeInfo(T);
+    const is_string_type = switch (info) {
+        .pointer => |pointer| switch (pointer.size) {
+            .One => {
+                const child_info = @typeInfo(pointer.child);
+                return switch (child_info) {
+                    .array => |array| array.child == u8,
+                    else => false,
+                };
+            },
+            .Slice => pointer.child == u8,
+            else => false,
+        },
+        else => false,
+    };
+
+    if (is_string_type)
+        std.debug.assert(@TypeOf(T, []const u8) == []const u8);
+
+    return is_string_type;
 }
