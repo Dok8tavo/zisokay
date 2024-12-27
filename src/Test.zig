@@ -24,6 +24,7 @@
 allocator: Allocator = std.testing.allocator,
 message: List(u8) = .{},
 
+const eq = @import("eq.zig");
 const root = @import("root.zig");
 const std = @import("std");
 
@@ -34,6 +35,13 @@ const Test = @This();
 
 pub const Error = error{TestFailed};
 pub const Writer = std.io.GenericWriter(*Test, NoError, writeFn);
+
+pub inline fn expectEq(t: *Test, comptime pattern: anytype, a: anytype, b: anytype) void {
+    const T = @TypeOf(a, b);
+    const eqFn = eq.eqFn(T, pattern);
+    if (!eqFn(a, b))
+        t.writeAll("Expected `a` and `b` to be equivalent according to `pattern` but their not!");
+}
 
 pub inline fn expectVariant(t: *Test, sum_value: anytype, variant_selector: anytype) void {
     const VariantSelector = @TypeOf(variant_selector);
@@ -97,7 +105,7 @@ pub inline fn expectPayload(t: *Test, value: anytype) void {
             "Expected payload, found error `{s}`!\n",
             .{@errorName(value)},
         ),
-        .optional, .null => if (value == null) t.write("Expected payload, found `null`!\n"),
+        .optional, .null => if (value == null) t.writeAll("Expected payload, found `null`!\n"),
         else => root.compileError(
             \\The type of the `value` parameter can be:
             \\- an optional,
@@ -112,7 +120,7 @@ pub inline fn expectPayload(t: *Test, value: anytype) void {
 }
 
 pub inline fn expectTrue(t: *Test, value: bool) void {
-    if (!value) t.write("Expected `true`, found `false`!");
+    if (!value) t.writeAll("Expected `true`, found `false`!");
 }
 
 /// This function panics or emit a compile error if the message of the test isn't empty.
