@@ -27,7 +27,7 @@ const std = @import("std");
 pub fn Tester(comptime is_comptime: bool) type {
     return struct {
         allocator: Allocator = default_allocator,
-        error_message: Slice = &[_]u8{},
+        messages: Messages = &[_]u8{},
         capacity: Capacity = default_capacity,
 
         const default_capacity = if (is_comptime) {} else 0;
@@ -35,8 +35,8 @@ pub fn Tester(comptime is_comptime: bool) type {
 
         const Allocator = if (is_comptime) void else std.mem.Allocator;
         const Capacity = if (is_comptime) void else usize;
+        const Messages = if (is_comptime) []const u8 else []u8;
         const Self = @This();
-        const Slice = if (is_comptime) []const u8 else []u8;
 
         pub fn initComptime() Self {
             std.debug.assert(@inComptime());
@@ -58,13 +58,13 @@ pub fn Tester(comptime is_comptime: bool) type {
 
         pub fn deinit(tester: *Self) void {
             defer tester.dismiss();
-            if (tester.error_message.len == 0)
+            if (tester.messages.len == 0)
                 return;
 
             if (isComptime())
-                @compileError(tester.error_message)
+                @compileError(tester.messages)
             else
-                @panic(tester.error_message);
+                @panic(tester.messages);
         }
 
         pub fn dismiss(tester: *Self) void {
@@ -77,27 +77,35 @@ pub fn Tester(comptime is_comptime: bool) type {
 
         pub fn report(tester: *Self) void {
             if (isComptime())
-                @compileLog(tester.error_message)
+                @compileLog(tester.messages)
             else
-                std.debug.print("{s}\n", .{tester.error_message});
+                std.debug.print("{s}\n", .{tester.messages});
 
-            tester.error_message = tester.error_message[0..0];
+            tester.messages = tester.messages[0..0];
+        }
+
+        pub fn expectTrue(tester: *Self, condition: bool) void {
+            if (!condition) tester.err("Expected true, got false!", .{});
+        }
+
+        pub fn err(tester: *Self, comptime fmt: []const u8, args: anytype) void {
+            tester.print("\n\x1B[31;1merror\x1B[0m: " ++ fmt, args);
         }
 
         pub fn print(tester: *Self, comptime fmt: []const u8, args: anytype) void {
             if (isComptime())
-                tester.error_message = tester.error_message ++ std.fmt.comptimePrint(fmt, args)
+                tester.messages = tester.messages ++ std.fmt.comptimePrint(fmt, args)
             else
                 std.fmt.format(std.io.GenericWriter(*Self, error{}, writeFn){ .context = tester }, fmt, args) catch unreachable;
         }
 
         pub fn write(tester: *Self, bytes: []const u8) void {
             if (isComptime()) {
-                tester.error_message = tester.error_message ++ bytes;
+                tester.messages = tester.messages ++ bytes;
             } else {
                 tester.ensureUnusedCapacity(bytes.len);
-                @memcpy(tester.error_message.ptr[tester.error_message.len..][0..bytes.len], bytes);
-                tester.error_message.len += bytes.len;
+                @memcpy(tester.messages.ptr[tester.messages.len..][0..bytes.len], bytes);
+                tester.messages.len += bytes.len;
             }
         }
 
@@ -108,7 +116,7 @@ pub fn Tester(comptime is_comptime: bool) type {
 
         fn ensureUnusedCapacity(tester: *Self, unused: usize) void {
             if (isComptime()) return;
-            tester.ensureCapacity(tester.error_message.len + unused);
+            tester.ensureCapacity(tester.messages.len + unused);
         }
 
         fn ensureCapacity(tester: *Self, capacity: usize) void {
@@ -126,13 +134,13 @@ pub fn Tester(comptime is_comptime: bool) type {
                 return;
 
             const new_error_message = tester.allocator.alloc(u8, new) catch root.oom();
-            @memcpy(new_error_message[0..tester.error_message.len], tester.error_message);
+            @memcpy(new_error_message[0..tester.messages.len], tester.messages);
             tester.allocator.free(tester.allocatedSlice());
-            tester.error_message = new_error_message[0..tester.error_message.len];
+            tester.messages = new_error_message[0..tester.messages.len];
         }
 
-        fn allocatedSlice(tester: *Self) Slice {
-            return tester.error_message.ptr[0..tester.capacity];
+        fn allocatedSlice(tester: *Self) Messages {
+            return tester.messages.ptr[0..tester.capacity];
         }
 
         inline fn isComptime() bool {
@@ -148,23 +156,30 @@ pub fn Tester(comptime is_comptime: bool) type {
 }
 
 test {
+    var t = Tester(false).initRuntime();
+    defer t.deinit();
+
+    t.expectTrue(true);
+}
+
+test "Tester(...).{ initComptime, initRuntime, dismiss, write, print }" {
     comptime {
         var ct = Tester(true).initComptime();
         defer ct.dismiss();
 
         ct.write("Hello");
-        std.debug.assert(std.mem.eql(u8, "Hello", ct.error_message));
+        std.debug.assert(std.mem.eql(u8, "Hello", ct.messages));
 
         ct.print(", {s}!", .{"world"});
-        std.debug.assert(std.mem.eql(u8, "Hello, world!", ct.error_message));
+        std.debug.assert(std.mem.eql(u8, "Hello, world!", ct.messages));
     }
 
     var rt = Tester(false).initRuntime();
     defer rt.dismiss();
 
     rt.write("Hello");
-    try std.testing.expectEqualStrings("Hello", rt.error_message);
+    try std.testing.expectEqualStrings("Hello", rt.messages);
 
     rt.print(", {s}!", .{"world"});
-    try std.testing.expectEqualStrings("Hello, world!", rt.error_message);
+    try std.testing.expectEqualStrings("Hello, world!", rt.messages);
 }
