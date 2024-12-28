@@ -23,15 +23,16 @@
 
 const result = @import("result.zig");
 const std = @import("std");
+const tester = @import("tester.zig");
 
-pub const Result = result.Result;
-pub const Test = @import("Test.zig");
+pub const Tester = tester.Tester;
 pub const eq = @import("eq.zig");
+pub const Result = result.Result;
 
 test {
-    _ = Result;
-    _ = Test;
     _ = eq;
+    _ = result;
+    _ = tester;
 }
 
 pub inline fn oom() noreturn {
