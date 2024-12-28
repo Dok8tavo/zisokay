@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-pub inline fn Result(comptime P: type, comptime F: type) type {
+pub fn Result(comptime P: type, comptime F: type) type {
     return union(enum) {
         pass: Pass,
         fail: Fail,
@@ -33,21 +33,21 @@ pub inline fn Result(comptime P: type, comptime F: type) type {
 
         pub const Reversed = Result(Fail, Pass);
 
-        pub inline fn expect(result: Self) error{FailedResult}!Pass {
+        pub fn expect(result: Self) error{FailedResult}!Pass {
             return switch (result) {
                 .pass => |pass| pass,
                 .fail => error.FailedResult,
             };
         }
 
-        pub inline fn reverse(result: Self) Reversed {
+        pub fn reverse(result: Self) Reversed {
             return switch (result) {
                 .pass => |pass| Reversed{ .fail = pass },
                 .fail => |fail| Reversed{ .pass = fail },
             };
         }
 
-        pub inline fn nab(result: Self, capture: *Fail) ?Pass {
+        pub fn nab(result: Self, capture: *Fail) ?Pass {
             return switch (result) {
                 .pass => |pass| pass,
                 .fail => |fail| {
@@ -57,7 +57,7 @@ pub inline fn Result(comptime P: type, comptime F: type) type {
             };
         }
 
-        pub inline fn get(result: Self) ?Pass {
+        pub fn get(result: Self) ?Pass {
             return switch (result) {
                 .pass => |pass| pass,
                 .fail => null,

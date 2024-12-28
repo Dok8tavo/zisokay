@@ -24,7 +24,7 @@
 const root = @import("root.zig");
 const std = @import("std");
 
-pub inline fn eqFn(comptime T: type, comptime pattern: anytype) fn (T, T) bool {
+pub fn eqFn(comptime T: type, comptime pattern: anytype) fn (T, T) bool {
     const Pattern = @TypeOf(pattern);
     if (Pattern == fn (T, T) bool)
         return pattern;
@@ -87,7 +87,7 @@ pub inline fn eqFn(comptime T: type, comptime pattern: anytype) fn (T, T) bool {
     }.eq;
 }
 
-pub inline fn equivalentFn(
+pub fn equivalentFn(
     comptime T: type,
     comptime Class: type,
     comptime classOf: fn (T) Class,
@@ -99,7 +99,7 @@ pub inline fn equivalentFn(
     }.equivalent;
 }
 
-pub inline fn approxEqualAbsoluteFn(
+pub fn approxEqualAbsoluteFn(
     comptime Float: type,
     comptime tolerance: Float,
 ) fn (Float, Float) bool {
@@ -114,7 +114,7 @@ pub inline fn approxEqualAbsoluteFn(
     }.approxEqualAbsolute;
 }
 
-pub inline fn approxEqualRelativeFn(
+pub fn approxEqualRelativeFn(
     comptime Float: type,
     comptime tolerance: Float,
 ) fn (Float, Float) bool {
@@ -129,7 +129,7 @@ pub inline fn approxEqualRelativeFn(
     }.approxEqualRelative;
 }
 
-pub inline fn valueEqualFn(comptime T: type) fn (T, T) bool {
+pub fn valueEqualFn(comptime T: type) fn (T, T) bool {
     return struct {
         fn valueEqual(a: T, b: T) bool {
             return a == b;
@@ -137,7 +137,7 @@ pub inline fn valueEqualFn(comptime T: type) fn (T, T) bool {
     }.valueEqual;
 }
 
-pub inline fn bitEqualFn(comptime T: type) fn (T, T) bool {
+pub fn bitEqualFn(comptime T: type) fn (T, T) bool {
     return struct {
         fn bitEqual(a: T, b: T) bool {
             const Vector = @Vector(@sizeOf(T), u8);
