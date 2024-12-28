@@ -29,6 +29,9 @@ pub inline fn eqFn(comptime T: type, comptime pattern: anytype) fn (T, T) bool {
     if (Pattern == fn (T, T) bool)
         return pattern;
 
+    if (Pattern == bool)
+        return eqFn(T, if (pattern) .alwaysTrue else .alwaysFalse);
+
     if (Pattern == @TypeOf(.enum_literal)) return switch (pattern) {
         .bitEqual => bitEqualFn(T),
         .valueEqual => valueEqualFn(T),
@@ -161,7 +164,7 @@ test eqFn {
             // this isn't a float, these are bits
             .not_float = .bitEqual,
             // padding doesn't matter
-            .padding = .alwaysTrue,
+            .padding = true,
             // two dividibles are equivalent if they have the same number of dividers
             .dividible = equivalentFn(u32, u8, struct {
                 fn numberOfDividers(number: u32) u8 {
