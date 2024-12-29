@@ -30,7 +30,7 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
         allocator: Allocator = default_allocator,
         messages: Messages = &[_]u8{},
         capacity: Capacity = default_capacity,
-        init_at: StackTrace,
+        init_stack_trace: StackTrace,
 
         const is_comptime = is == .at_comptime;
         const default_capacity = if (is_comptime) {} else 0;
@@ -40,37 +40,46 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
         const Capacity = if (is_comptime) void else usize;
         const Messages = if (is_comptime) []const u8 else []u8;
         const Self = @This();
-        const StackTrace = if (is_comptime) void else std.builtin.StackTrace;
+        const StackTrace = if (is_comptime) void else std.ArrayListUnmanaged(u8);
 
-        const tester_has_error_messages = "Tester has error messages:\n" ++
-            "\x1B[31;1m============================\x1B[m" ++
-            "{s}" ++
-            "\x1B[31;1m============================\x1B[m\n";
+        const line_style = reset_style ++ "\x1B[30;1m";
+        const title_style = reset_style ++ "\x1B[31;1m";
+        const bold_style = reset_style ++ "\x1B[1m";
+        const reset_style = "\x1B[0m";
+
+        const tester_has_error_messages = std.fmt.comptimePrint(
+            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Error Message{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
+            .{ line_style, title_style, line_style, reset_style },
+        );
+        const tester_expect_stack_trace = std.fmt.comptimePrint(
+            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Expect Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
+            .{ line_style, title_style, line_style, reset_style },
+        );
+        const tester_report_stack_trace = std.fmt.comptimePrint(
+            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Report Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
+            .{ line_style, title_style, line_style, reset_style },
+        );
+        const tester_deinit_stack_trace = std.fmt.comptimePrint(
+            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Deinit Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
+            .{ line_style, title_style, line_style, reset_style },
+        );
+        const tester_init_stack_trace = std.fmt.comptimePrint(
+            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Init Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
+            .{ line_style, title_style, line_style, reset_style },
+        );
 
         pub fn init() Self {
             return if (isComptime())
-                Self.initComptime()
+                Self{ .init_stack_trace = {} }
             else
-                Self.initRuntime();
+                Self.initWithAllocator(std.testing.allocator);
         }
 
-        pub fn initRuntime() Self {
-            std.debug.assert(!@inComptime());
-            std.debug.assert(!is_comptime);
-            var tester = Self{ .init_at = undefined };
-            std.debug.captureStackTrace(@returnAddress(), &tester.init_at);
-            return tester;
-        }
-
-        pub fn initComptime() Self {
-            std.debug.assert(@inComptime());
-            std.debug.assert(is_comptime);
-            return .{ .init_at = {} };
-        }
-
-        pub fn initWithAllocator(allocator: Allocator) Self {
-            var tester = Self.initRuntime();
-            tester.allocator = allocator;
+        pub inline fn initWithAllocator(allocator: Allocator) Self {
+            if (isComptime())
+                return .{ .init_stack_trace = {} };
+            var tester = Self{ .allocator = allocator, .init_stack_trace = .{} };
+            tester.captureCurrentStackTrace();
             return tester;
         }
 
@@ -80,22 +89,32 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                 return;
 
             if (isComptime())
-                root.compileError(tester_has_error_messages, .{tester.messages})
+                root.compileError(tester_has_error_messages ++ "{s}", .{tester.messages})
             else {
-                std.debug.panic(tester_has_error_messages ++
-                    "Tester panicked here:", .{tester.messages});
+                std.debug.print(
+                    tester_has_error_messages ++ "\n{s}\n" ++
+                        tester_init_stack_trace ++ "\n{s}\n" ++
+                        tester_deinit_stack_trace ++ "\n",
+                    .{ tester.messages, tester.init_stack_trace.items },
+                );
+
+                @panic("Tester had non-dismissed error messages when deinited.");
             }
         }
 
         pub fn report(tester: *Self) void {
             if (isComptime())
-                root.compileLog(tester_has_error_messages, .{tester.messages})
+                root.compileError(tester_has_error_messages ++ "\n{s}\n", .{tester.messages})
             else {
-                tester.write(
-                    "Tester reported here:\n",
+                std.debug.print(
+                    tester_has_error_messages ++ "\n{s}\n" ++
+                        tester_report_stack_trace ++ "\n",
+                    .{tester.messages},
                 );
-                tester.writeCurrentStackTrace();
-                std.debug.print(tester_has_error_messages, .{tester.messages});
+
+                std.debug.dumpCurrentStackTrace(@returnAddress());
+                std.debug.print("\n" ++ tester_init_stack_trace, .{});
+                std.debug.print("\n{s}\n", .{tester.init_stack_trace.items});
             }
 
             tester.reset();
@@ -107,15 +126,27 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                 return;
 
             tester.allocator.free(tester.allocatedSlice());
+            tester.init_stack_trace.clearAndFree(tester.allocator);
         }
 
         pub fn reset(tester: *Self) void {
             tester.messages = tester.messages[0..0];
+            if (!is_comptime) {
+                tester.init_stack_trace.clearRetainingCapacity();
+                tester.captureCurrentStackTrace();
+            }
         }
 
         pub fn expectEqual(tester: *Self, expected: anytype, actual: anytype) void {
-            if (!tester.expectEqualInternal(expected, actual))
+            if (!tester.expectEqualInternal(expected, actual)) {
+                tester.write("\n\n");
+                if (isComptime()) {
+                    tester.write(tester_deinit_stack_trace);
+                    return;
+                }
+                tester.write(tester_expect_stack_trace);
                 tester.writeCurrentStackTrace();
+            }
         }
 
         pub fn expectEqualInternal(tester: *Self, expected: anytype, actual: anytype) bool {
@@ -265,6 +296,19 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             }
         }
 
+        fn writeStackTrace(tester: *Self, stack_trace: std.builtin.StackTrace) void {
+            if (isComptime())
+                return;
+
+            tester.write("\n");
+            std.debug.writeStackTrace(
+                stack_trace,
+                tester.writer(),
+                std.debug.getSelfDebugInfo() catch root.oom(),
+                .escape_codes,
+            ) catch root.oom();
+        }
+
         inline fn writeCurrentStackTrace(tester: *Self) void {
             if (isComptime())
                 return;
@@ -272,6 +316,18 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             tester.write("\n");
             std.debug.writeCurrentStackTrace(
                 tester.writer(),
+                std.debug.getSelfDebugInfo() catch root.oom(),
+                .escape_codes,
+                @returnAddress(),
+            ) catch root.oom();
+        }
+
+        inline fn captureCurrentStackTrace(tester: *Self) void {
+            if (isComptime())
+                return;
+
+            std.debug.writeCurrentStackTrace(
+                tester.init_stack_trace.writer(tester.allocator),
                 std.debug.getSelfDebugInfo() catch root.oom(),
                 .escape_codes,
                 @returnAddress(),
@@ -323,7 +379,18 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
         }
 
         inline fn assertTime() void {
-            std.debug.assert(@inComptime() == is_comptime);
+            if (@inComptime() != is_comptime) root.compileError(
+                \\Tester inited at {s} must be initiated using one of:
+                \\- `Tester(.{s}).init()`,
+                \\- `Tester(.{s}).init{s}()`,
+                \\{s}
+            , if (!is_comptime) .{
+                "compile-time", "at_comptime", "at_comptime", "Comptime", "",
+            } else .{
+                "runtime",                                           "at_runtime",
+                "at_comptime",                                       "Runtime",
+                "- `Tester(.at_runtime).initWithAllocator(...)`,\n",
+            });
             std.debug.assert(@import("builtin").is_test);
         }
     };
@@ -361,7 +428,7 @@ test "Tester(...).expectEqual" {
         1,
         std.fmt.comptimePrint(expect_equal_messages.value, .{ true, false }),
     ));
-    t.report();
+    t.reset();
 
     // arrays
     t.expectEqual([3]u16{ 1, 2, 3 }, [3]u16{ 1, 1000, 3 });
@@ -416,7 +483,6 @@ test "Tester(...).expectEqual" {
         1,
         expect_equal_messages.payload_of_error_union,
     ));
-    t.report();
     t.expectEqual(@as(ErrorUnion, error.ErrorA), error.ErrorB);
     try std.testing.expect(std.mem.containsAtLeast(
         u8,
