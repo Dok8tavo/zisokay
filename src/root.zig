@@ -39,6 +39,10 @@ pub inline fn oom() noreturn {
     @panic("Out of memory");
 }
 
+pub inline fn compileLog(comptime fmt: []const u8, comptime args: anytype) void {
+    @compileLog(std.fmt.comptimePrint(fmt, args));
+}
+
 pub inline fn compileError(comptime fmt: []const u8, comptime args: anytype) noreturn {
     @compileError(std.fmt.comptimePrint(fmt, args));
 }
