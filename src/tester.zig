@@ -25,6 +25,8 @@ const eq = @import("eq.zig");
 const root = @import("root.zig");
 const std = @import("std");
 
+const Location = @import("Location.zig");
+
 pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
     return struct {
         allocator: Allocator = default_allocator,
@@ -41,32 +43,6 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
         const Messages = if (is_comptime) []const u8 else []u8;
         const Self = @This();
         const StackTrace = if (is_comptime) void else std.ArrayListUnmanaged(u8);
-
-        const line_style = reset_style ++ "\x1B[30;1m";
-        const title_style = reset_style ++ "\x1B[31;1m";
-        const bold_style = reset_style ++ "\x1B[1m";
-        const reset_style = "\x1B[0m";
-
-        const tester_has_error_messages = std.fmt.comptimePrint(
-            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Error Message{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
-            .{ line_style, title_style, line_style, reset_style },
-        );
-        const tester_expect_stack_trace = std.fmt.comptimePrint(
-            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Expect Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
-            .{ line_style, title_style, line_style, reset_style },
-        );
-        const tester_report_stack_trace = std.fmt.comptimePrint(
-            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Report Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
-            .{ line_style, title_style, line_style, reset_style },
-        );
-        const tester_deinit_stack_trace = std.fmt.comptimePrint(
-            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Deinit Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
-            .{ line_style, title_style, line_style, reset_style },
-        );
-        const tester_init_stack_trace = std.fmt.comptimePrint(
-            "{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Init Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}",
-            .{ line_style, title_style, line_style, reset_style },
-        );
 
         pub fn init() Self {
             return if (isComptime())
@@ -89,12 +65,12 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                 return;
 
             if (isComptime())
-                root.compileError(tester_has_error_messages ++ "{s}", .{tester.messages})
+                root.compileError(separators.tester_has_error_messages ++ "{s}", .{tester.messages})
             else {
                 std.debug.print(
-                    tester_has_error_messages ++ "\n{s}\n" ++
-                        tester_init_stack_trace ++ "\n{s}\n" ++
-                        tester_deinit_stack_trace ++ "\n",
+                    separators.tester_has_error_messages ++ "{s}" ++
+                        separators.tester_init_stack_trace ++ "{s}" ++
+                        separators.tester_deinit_stack_trace,
                     .{ tester.messages, tester.init_stack_trace.items },
                 );
 
@@ -104,17 +80,17 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
 
         pub fn report(tester: *Self) void {
             if (isComptime())
-                root.compileError(tester_has_error_messages ++ "\n{s}\n", .{tester.messages})
+                root.compileError(separators.tester_has_error_messages ++ "{s}\n", .{tester.messages})
             else {
                 std.debug.print(
-                    tester_has_error_messages ++ "\n{s}\n" ++
-                        tester_report_stack_trace ++ "\n",
+                    separators.tester_has_error_messages ++ "{s}" ++
+                        separators.tester_report_stack_trace,
                     .{tester.messages},
                 );
 
                 std.debug.dumpCurrentStackTrace(@returnAddress());
-                std.debug.print("\n" ++ tester_init_stack_trace, .{});
-                std.debug.print("\n{s}\n", .{tester.init_stack_trace.items});
+                std.debug.print(separators.tester_init_stack_trace, .{});
+                std.debug.print("{s}\n", .{tester.init_stack_trace.items});
             }
 
             tester.reset();
@@ -137,19 +113,162 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             }
         }
 
+        pub fn expectEqualAsciiStrings(tester: *Self, expected: []const u8, actual: []const u8) void {
+            const min_len = @min(expected.len, actual.len);
+            const index_of_difference = for (0..min_len) |index| {
+                if (expected[index] != actual[index]) break index;
+            } else if (expected.len == actual.len) return else min_len;
+            _ = index_of_difference;
+
+            tester.err("Expected a certain string!" ++ separators.expected_string, .{});
+            tester.writeAsciiString(expected);
+            tester.write("\n\n" ++ separators.actual_string ++ "\n\n");
+            tester.writeAsciiString(actual);
+            tester.write("\n");
+        }
+
         pub fn expectEqual(tester: *Self, expected: anytype, actual: anytype) void {
             if (!tester.expectEqualInternal(expected, actual)) {
-                tester.write("\n\n");
+                tester.write("\n");
                 if (isComptime()) {
-                    tester.write(tester_deinit_stack_trace);
+                    tester.write(separators.tester_deinit_stack_trace);
                     return;
                 }
-                tester.write(tester_expect_stack_trace);
+                tester.write(separators.tester_expect_stack_trace);
                 tester.writeCurrentStackTrace();
             }
         }
 
-        pub fn expectEqualInternal(tester: *Self, expected: anytype, actual: anytype) bool {
+        pub fn expectTrue(tester: *Self, condition: bool) void {
+            tester.expectEqual(true, condition);
+        }
+
+        pub fn err(tester: *Self, comptime fmt: []const u8, args: anytype) void {
+            tester.print(styles.reset ++ styles.err ++ "error" ++ styles.reset ++ ": " ++ fmt ++ "\n", args);
+        }
+
+        pub fn warn(tester: *Self, comptime fmt: []const u8, args: anytype) void {
+            tester.print(styles.reset ++ styles.warn ++ "warning" ++ styles.reset ++ ": " ++ fmt ++ "\n", args);
+        }
+
+        pub fn info(tester: *Self, comptime fmt: []const u8, args: anytype) void {
+            tester.print(styles.reset ++ styles.info ++ "info" ++ styles.reset ++ ": " ++ fmt ++ "\n", args);
+        }
+
+        pub fn debug(tester: *Self, comptime fmt: []const u8, args: anytype) void {
+            tester.print(styles.reset ++ styles.debug ++ "debug" ++ styles.reset ++ ": " ++ fmt ++ "\n", args);
+        }
+
+        pub fn print(tester: *Self, comptime fmt: []const u8, args: anytype) void {
+            if (isComptime())
+                tester.messages = tester.messages ++ std.fmt.comptimePrint(fmt, args)
+            else
+                tester.writer().print(fmt, args) catch unreachable;
+        }
+
+        pub fn write(tester: *Self, bytes: []const u8) void {
+            if (isComptime()) {
+                tester.messages = tester.messages ++ bytes;
+            } else {
+                tester.ensureUnusedCapacity(bytes.len);
+                @memcpy(tester.messages.ptr[tester.messages.len..][0..bytes.len], bytes);
+                tester.messages.len += bytes.len;
+            }
+        }
+
+        fn writeAsciiString(tester: *Self, string: []const u8) void {
+            const code_style = styles.yellow;
+            const max_line = Location.maxLine(string);
+            const max_line_length: usize = cifers(max_line);
+            const clamp = 100 - max_line_length - 2;
+            var index: usize = 0;
+            var line: usize = 1;
+            var column: usize = 1;
+            {
+                const spaces = max_line_length - 1;
+                for (0..spaces) |_|
+                    tester.write(" ");
+                tester.print("{s}1:{s} ", .{ styles.dim, styles.reset });
+            }
+            while (index < string.len) {
+                if (clamp <= column) {
+                    tester.write("\n");
+                    for (0..max_line_length + 2) |_|
+                        tester.write(" ");
+                    column = 1;
+                }
+
+                switch (string[index]) {
+                    0x00...0x08, 0x0C, 0x0E...0x20 => {
+                        var symbol: [4]u8 = undefined;
+                        const l = std.unicode.utf8Encode(0x2400 + @as(u21, string[index]), &symbol) catch unreachable;
+                        tester.print(code_style ++ "{s}" ++ styles.reset, .{symbol[0..l]});
+                        index += 1;
+                        column += 1;
+                    },
+                    // horizontal tab
+                    0x09 => {
+                        tester.write(code_style ++ "␉" ++ styles.reset);
+                        const length = 4 - (column % 4);
+                        for (1..length) |_|
+                            tester.write(" ");
+                        index += 1;
+                        column += length;
+                    },
+                    // line feed
+                    0x0A => {
+                        tester.write(code_style ++ "␤\n" ++ styles.reset);
+                        line += 1;
+                        column = 1;
+                        index += 1;
+                        const line_length = cifers(line);
+                        const spaces = max_line_length - line_length;
+                        for (0..spaces) |_|
+                            tester.write(" ");
+                        tester.print("{s}{}:{s} ", .{ styles.dim, line, styles.reset });
+                    },
+                    // vertical tab
+                    0x0B => {
+                        tester.write(code_style ++ "␋\n" ++ styles.reset);
+                        line += 1;
+                        index += 1;
+                        const line_length = cifers(line);
+                        const spaces = max_line_length - line_length;
+                        for (0..spaces) |_|
+                            tester.write(" ");
+                        tester.print("{s}{}:{s} ", .{ styles.dim, line, styles.reset });
+                        for (0..column) |_|
+                            tester.write(" ");
+                    },
+                    // carriage return
+                    0x0D => {
+                        tester.write(code_style ++ "␍" ++ styles.reset);
+                        index += 1;
+                        column = 1;
+                        tester.write("\n");
+                        for (0..max_line_length + 2) |_|
+                            tester.write(" ");
+                    },
+                    0x21...0x7E => {
+                        tester.write(&[_]u8{string[index]});
+                        index += 1;
+                        column += 1;
+                    },
+                    0x7F => {
+                        tester.write(code_style ++ "␡" ++ styles.reset);
+                        index += 1;
+                        column += 1;
+                    },
+                    0x80...0xFF => {
+                        tester.write(code_style ++ "�" ++ styles.reset);
+                        index += 1;
+                        column += 1;
+                    },
+                }
+            }
+        }
+
+        fn expectEqualInternal(tester: *Self, expected: anytype, actual: anytype) bool {
             const T = @TypeOf(expected, actual);
             const t_info = @typeInfo(T);
             const expected_as_t = @as(T, expected);
@@ -259,43 +378,6 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             };
         }
 
-        pub fn expectTrue(tester: *Self, condition: bool) void {
-            tester.expectEqual(true, condition);
-        }
-
-        pub fn err(tester: *Self, comptime fmt: []const u8, args: anytype) void {
-            tester.print("\n\x1B[31;1merror\x1B[0m: " ++ fmt, args);
-        }
-
-        pub fn warn(tester: *Self, comptime fmt: []const u8, args: anytype) void {
-            tester.print("\n\x1B[33;1mwarning\x1B[0m: " ++ fmt, args);
-        }
-
-        pub fn info(tester: *Self, comptime fmt: []const u8, args: anytype) void {
-            tester.print("\n\x1B[36;1minfo\x1B[0m: " ++ fmt, args);
-        }
-
-        pub fn debug(tester: *Self, comptime fmt: []const u8, args: anytype) void {
-            tester.print("\n\x1B[1mdebug\x1B[0m: " ++ fmt, args);
-        }
-
-        pub fn print(tester: *Self, comptime fmt: []const u8, args: anytype) void {
-            if (isComptime())
-                tester.messages = tester.messages ++ std.fmt.comptimePrint(fmt, args)
-            else
-                tester.writer().print(fmt, args) catch unreachable;
-        }
-
-        pub fn write(tester: *Self, bytes: []const u8) void {
-            if (isComptime()) {
-                tester.messages = tester.messages ++ bytes;
-            } else {
-                tester.ensureUnusedCapacity(bytes.len);
-                @memcpy(tester.messages.ptr[tester.messages.len..][0..bytes.len], bytes);
-                tester.messages.len += bytes.len;
-            }
-        }
-
         fn writeStackTrace(tester: *Self, stack_trace: std.builtin.StackTrace) void {
             if (isComptime())
                 return;
@@ -393,8 +475,89 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             });
             std.debug.assert(@import("builtin").is_test);
         }
+
+        fn cifers(n: u64) u5 {
+            return switch (n) {
+                0...9 => 1,
+                10...99 => 2,
+                100...999 => 3,
+                1000...9999 => 4,
+                10_000...99_999 => 5,
+                100000...999_999 => 6,
+                1000_000...9999_999 => 7,
+                10_000_000...99_999_999 => 8,
+                100_000_000...999_999_999 => 9,
+                1000_000_000...9999_999_999 => 10,
+                10_000_000_000...99_999_999_999 => 11,
+                100_000_000_000...999_999_999_999 => 12,
+                1000_000_000_000...9999_999_999_999 => 13,
+                10_000_000_000_000...99_999_999_999_999 => 14,
+                100_000_000_000_000...999_999_999_999_999 => 15,
+                1000_000_000_000_000...9999_999_999_999_999 => 16,
+                10_000_000_000_000_000...99_999_999_999_999_999 => 17,
+                100_000_000_000_000_000...999_999_999_999_999_999 => 18,
+                1000_000_000_000_000_000...9999_999_999_999_999_999 => 19,
+                else => 20,
+            };
+        }
     };
 }
+
+const styles = struct {
+    const reset = "\x1B[0m";
+
+    const bold = "\x1B[1m";
+    const dim = "\x1B[2m";
+    const italic = "\x1B[3m";
+    const underlined = "\x1B[4m";
+
+    const red = "\x1B[31m";
+    const green = "\x1B[32m";
+    const yellow = "\x1B[33m";
+    const blue = "\x1B[34m";
+    const magenta = "\x1B[35m";
+    const cyan = "\x1B[36m";
+    const white = "\x1B[37m";
+
+    const black = "\x1B[30m";
+
+    const line = dim ++ bold;
+    const title = red ++ bold;
+    const info = blue ++ bold;
+    const debug = bold;
+    const warn = yellow ++ bold;
+    const err = red ++ bold;
+};
+const separators = struct {
+    const tester_has_error_messages = std.fmt.comptimePrint(
+        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Error Message{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
+        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
+    );
+    const tester_expect_stack_trace = std.fmt.comptimePrint(
+        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Expect Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
+        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
+    );
+    const tester_report_stack_trace = std.fmt.comptimePrint(
+        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Report Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
+        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
+    );
+    const tester_deinit_stack_trace = std.fmt.comptimePrint(
+        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Deinit Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
+        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
+    );
+    const tester_init_stack_trace = std.fmt.comptimePrint(
+        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Init Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
+        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
+    );
+    const expected_string = std.fmt.comptimePrint(
+        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Expected String{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
+        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
+    );
+    const actual_string = std.fmt.comptimePrint(
+        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Actual String{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
+        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
+    );
+};
 
 const expect_equal_messages = .{
     // those are errors
@@ -412,6 +575,7 @@ const expect_equal_messages = .{
     .error_of_error_union = "Error of error union.",
     .payload_of_optional = "Payload of optional.",
 };
+
 test "Tester(...).expectEqual" {
     var t = Tester(.at_runtime).init();
     defer t.deinit();
@@ -551,4 +715,33 @@ test "Tester(...).{ initComptime, initRuntime, dismiss, write, print }" {
 
     rt.print(", {s}!", .{"world"});
     try std.testing.expectEqualStrings("Hello, world!", rt.messages);
+}
+
+test "Tester(...).expectEqualAsciiString" {
+    var t = Tester(.at_runtime).init();
+    defer t.deinit();
+
+    t.debug("Hello world!", .{});
+    t.info("I'm a barbie girl!", .{});
+    t.warn("In a barbie world!", .{});
+    t.err("In a barbie world!", .{});
+
+    t.expectEqual(true, false);
+
+    t.writeAsciiString("\n\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F" ++
+        "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F" ++
+        "\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2A\x2B\x2C\x2D\x2E\x2F" ++
+        "\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3A\x3B\x3C\x3D\x3E\x3F" ++
+        "\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4A\x4B\x4C\x4D\x4E\x4F" ++
+        "\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5A\x5B\x5C\x5D\x5E\x5F" ++
+        "\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6A\x6B\x6C\x6D\x6E\x6F" ++
+        "\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7A\x7B\x7C\x7D\x7E\x7F" ++
+        "\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8A\x8B\x8C\x8D\x8E\x8F" ++
+        "\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9A\x9B\x9C\x9D\x9E\x9F" ++
+        "\xA0\xA1\xA2\xA3\xA4\xA5\xA6\xA7\xA8\xA9\xAA\xAB\xAC\xAD\xAE\xAF" ++
+        "\xB0\xB1\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xBB\xBC\xBD\xBE\xBF" ++
+        "\xC0\xC1\xC2\xC3\xC4\xC5\xC6\xC7\xC8\xC9\xCA\xCB\xCC\xCD\xCE\xCF" ++
+        "\xD0\xD1\xD2\xD3\xD4\xD5\xD6\xD7\xD8\xD9\xDA\xDB\xDC\xDD\xDE\xDF" ++
+        "\xE0\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xEB\xEC\xED\xEE\xEF" ++
+        "\xF0\xF1\xF2\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA\xFB\xFC\xFD\xFE\xFF");
 }
