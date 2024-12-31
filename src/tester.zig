@@ -541,6 +541,7 @@ const styles = struct {
     const warn = yellow ++ bold;
     const err = red ++ bold;
 };
+
 const Separator = struct {
     string: []const u8,
 
@@ -599,7 +600,7 @@ const expect_equal_messages = .{
     .payload_of_optional = "Payload of optional.",
 };
 
-test "Tester(.at_runtime).expect(true things)" {
+test "Tester(.at_runtime).expectEqual(some thing, same thing)" {
     var t = Tester(.at_runtime).init();
     defer t.deinit();
 
@@ -649,13 +650,96 @@ test "Tester(.at_runtime).expect(true things)" {
     t.expectEqual(@Vector(4, u8){ 1, 2, 3, 4 }, @Vector(4, u8){ 1, 2, 3, 4 });
 
     // tuple
-    const Tuple = struct { usize };
-    t.expectEqual(Tuple{0}, Tuple{0});
+    const Tuple = struct { usize, bool };
+    t.expectEqual(Tuple{ 0, false }, Tuple{ 0, false });
+
+    // structs
+    const Struct = struct { a: usize, b: bool };
+    t.expectEqual(Struct{ .a = 0, .b = false }, Struct{ .a = 0, .b = false });
+
+    // unions
+    const Union = union(enum) { a: usize, b: bool };
+    t.expectEqual(Union{ .a = 0 }, Union{ .a = 0 });
+
+    // error unions
+    const ErrorUnion = anyerror!u8;
+    t.expectEqual(@as(ErrorUnion, error.SomeError), error.SomeError);
+    t.expectEqual(@as(ErrorUnion, 0), 0);
+
+    // optionals
+    t.expectEqual(@as(?u8, 0), 0);
+    t.expectEqual(@as(?u8, null), null);
 }
 
-test "Tester(.at_comptime).expect(true things)" {
+test "Tester(.at_comptime).expectEqual(some thing, same thing)" {
     comptime {
         var t = Tester(.at_comptime).init();
         defer t.deinit();
+
+        // void, null, undefined
+        t.expectEqual({}, {});
+        t.expectEqual(null, null);
+        t.expectEqual(undefined, undefined);
+
+        // booleans
+        t.expectEqual(true, true);
+        t.expectEqual(false, false);
+
+        // integers
+        t.expectEqual(@as(usize, 0), 0);
+        t.expectEqual(0, @as(usize, 0));
+
+        // floats
+        t.expectEqual(@as(f64, 0.0), 0.0);
+        t.expectEqual(0.0, @as(f64, 0.0));
+
+        // comptime integers
+        t.expectEqual(0, 0);
+
+        // comptime floats
+        t.expectEqual(0.0, 0.0);
+
+        // enum literal
+        t.expectEqual(.literal, .literal);
+
+        // enum
+        const Enum = enum { variant_1, variant_2 };
+        t.expectEqual(Enum.variant_1, Enum.variant_1);
+
+        // errors
+        t.expectEqual(error.SomeError, error.SomeError);
+
+        // types
+        t.expectEqual(type, type);
+        t.expectEqual(void, void);
+        t.expectEqual(@TypeOf(t), @TypeOf(t));
+        t.expectEqual([]const []volatile [2:0]usize, []const []volatile [2:0]usize);
+
+        // arrays
+        t.expectEqual([3]u8{ 1, 2, 3 }, [3]u8{ 1, 2, 3 });
+
+        // vectors
+        t.expectEqual(@Vector(4, u8){ 1, 2, 3, 4 }, @Vector(4, u8){ 1, 2, 3, 4 });
+
+        // tuple
+        const Tuple = struct { usize, bool };
+        t.expectEqual(Tuple{ 0, false }, Tuple{ 0, false });
+
+        // structs
+        const Struct = struct { a: usize, b: bool };
+        t.expectEqual(Struct{ .a = 0, .b = false }, Struct{ .a = 0, .b = false });
+
+        // unions
+        const Union = union(enum) { a: usize, b: bool };
+        t.expectEqual(Union{ .a = 0 }, Union{ .a = 0 });
+
+        // error unions
+        const ErrorUnion = anyerror!u8;
+        t.expectEqual(@as(ErrorUnion, error.SomeError), error.SomeError);
+        t.expectEqual(@as(ErrorUnion, 0), 0);
+
+        // optionals
+        t.expectEqual(@as(?u8, 0), 0);
+        t.expectEqual(@as(?u8, null), null);
     }
 }
