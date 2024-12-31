@@ -26,6 +26,7 @@ const root = @import("root.zig");
 const std = @import("std");
 
 const Location = @import("Location.zig");
+const max_width = 100;
 
 pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
     return struct {
@@ -64,13 +65,14 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             if (tester.messages.len == 0)
                 return;
 
-            if (isComptime())
-                root.compileError(separators.tester_has_error_messages ++ "{s}", .{tester.messages})
-            else {
+            if (isComptime()) root.compileError(
+                Separator.tester_has_error_messages.string ++ "{s}",
+                .{tester.messages},
+            ) else {
                 std.debug.print(
-                    separators.tester_has_error_messages ++ "{s}" ++
-                        separators.tester_init_stack_trace ++ "{s}" ++
-                        separators.tester_deinit_stack_trace,
+                    Separator.tester_has_error_messages.string ++ "{s}" ++
+                        Separator.tester_init_stack_trace.string ++ "{s}" ++
+                        Separator.tester_deinit_stack_trace.string,
                     .{ tester.messages, tester.init_stack_trace.items },
                 );
 
@@ -79,17 +81,18 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
         }
 
         pub fn report(tester: *Self) void {
-            if (isComptime())
-                root.compileError(separators.tester_has_error_messages ++ "{s}\n", .{tester.messages})
-            else {
+            if (isComptime()) root.compileError(
+                Separator.tester_has_error_messages.string ++ "{s}\n",
+                .{tester.messages},
+            ) else {
                 std.debug.print(
-                    separators.tester_has_error_messages ++ "{s}" ++
-                        separators.tester_report_stack_trace,
+                    Separator.tester_has_error_messages.string ++ "{s}" ++
+                        Separator.tester_report_stack_trace.string,
                     .{tester.messages},
                 );
 
                 std.debug.dumpCurrentStackTrace(@returnAddress());
-                std.debug.print(separators.tester_init_stack_trace, .{});
+                std.debug.print(Separator.tester_init_stack_trace.string, .{});
                 std.debug.print("{s}\n", .{tester.init_stack_trace.items});
             }
 
@@ -117,24 +120,22 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             const min_len = @min(expected.len, actual.len);
             const index_of_difference = for (0..min_len) |index| {
                 if (expected[index] != actual[index]) break index;
-            } else if (expected.len == actual.len) return else min_len;
+            } else if (expected.len != actual.len) min_len else return;
             _ = index_of_difference;
 
-            tester.err("Expected a certain string!" ++ separators.expected_string, .{});
+            tester.write(Separator.unexpected_string_error.string ++ Separator.expected_string.string);
             tester.writeAsciiString(expected);
-            tester.write("\n\n" ++ separators.actual_string ++ "\n\n");
+            tester.write(Separator.actual_string.string);
             tester.writeAsciiString(actual);
-            tester.write("\n");
         }
 
         pub fn expectEqual(tester: *Self, expected: anytype, actual: anytype) void {
             if (!tester.expectEqualInternal(expected, actual)) {
-                tester.write("\n");
                 if (isComptime()) {
-                    tester.write(separators.tester_deinit_stack_trace);
+                    tester.write(Separator.tester_deinit_stack_trace.string);
                     return;
                 }
-                tester.write(separators.tester_expect_stack_trace);
+                tester.write(Separator.tester_expect_stack_trace.string);
                 tester.writeCurrentStackTrace();
             }
         }
@@ -176,78 +177,89 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             }
         }
 
+        pub fn writeNTimes(tester: *Self, bytes: []const u8, n: usize) void {
+            for (0..n) |_| tester.write(bytes);
+        }
+
         fn writeAsciiString(tester: *Self, string: []const u8) void {
-            const code_style = styles.yellow;
+            const code_style = styles.dim;
+            const whitespace_style = styles.green ++ styles.dim;
+            const delete_style = styles.red ++ styles.dim;
+            const invalid_style = styles.red;
+
             const max_line = Location.maxLine(string);
             const max_line_length: usize = cifers(max_line);
-            const clamp = 100 - max_line_length - 2;
+            const clamp = max_width - max_line_length - 2;
             var index: usize = 0;
             var line: usize = 1;
             var column: usize = 1;
             {
                 const spaces = max_line_length - 1;
-                for (0..spaces) |_|
-                    tester.write(" ");
+                tester.writeNTimes(" ", spaces);
                 tester.print("{s}1:{s} ", .{ styles.dim, styles.reset });
             }
             while (index < string.len) {
                 if (clamp <= column) {
                     tester.write("\n");
-                    for (0..max_line_length + 2) |_|
-                        tester.write(" ");
+                    tester.writeNTimes(" ", max_line_length + 2);
                     column = 1;
                 }
 
                 switch (string[index]) {
-                    0x00...0x08, 0x0C, 0x0E...0x20 => {
+                    0x00...0x08, 0x0C, 0x0E...0x1F => {
                         var symbol: [4]u8 = undefined;
                         const l = std.unicode.utf8Encode(0x2400 + @as(u21, string[index]), &symbol) catch unreachable;
-                        tester.print(code_style ++ "{s}" ++ styles.reset, .{symbol[0..l]});
+                        tester.print("{s}{s}" ++ styles.reset, .{ switch (string[index]) {
+                            0x00...0x08, 0x0E...0x1F => code_style,
+                            0x0C => whitespace_style,
+                            else => unreachable,
+                        }, symbol[0..l] });
                         index += 1;
                         column += 1;
                     },
                     // horizontal tab
                     0x09 => {
-                        tester.write(code_style ++ "␉" ++ styles.reset);
+                        tester.write(whitespace_style ++ "␉" ++ styles.reset);
                         const length = 4 - (column % 4);
-                        for (1..length) |_|
-                            tester.write(" ");
+                        tester.writeNTimes(" ", length - 1);
                         index += 1;
                         column += length;
                     },
                     // line feed
                     0x0A => {
-                        tester.write(code_style ++ "␤\n" ++ styles.reset);
+                        tester.write(whitespace_style ++ "␤\n" ++ styles.reset);
                         line += 1;
                         column = 1;
                         index += 1;
                         const line_length = cifers(line);
                         const spaces = max_line_length - line_length;
-                        for (0..spaces) |_|
-                            tester.write(" ");
+                        tester.writeNTimes(" ", spaces);
                         tester.print("{s}{}:{s} ", .{ styles.dim, line, styles.reset });
                     },
                     // vertical tab
                     0x0B => {
-                        tester.write(code_style ++ "␋\n" ++ styles.reset);
+                        tester.write(whitespace_style ++ "␋\n" ++ styles.reset);
                         line += 1;
                         index += 1;
                         const line_length = cifers(line);
                         const spaces = max_line_length - line_length;
-                        for (0..spaces) |_|
-                            tester.write(" ");
+                        tester.writeNTimes(" ", spaces);
                         tester.print("{s}{}:{s} ", .{ styles.dim, line, styles.reset });
-                        for (0..column) |_|
-                            tester.write(" ");
+                        tester.writeNTimes(" ", column);
                     },
                     // carriage return
                     0x0D => {
-                        tester.write(code_style ++ "␍" ++ styles.reset);
+                        tester.write(delete_style ++ "␍" ++ styles.reset);
                         index += 1;
                         column = 1;
                         tester.write("\n");
-                        for (0..max_line_length + 2) |_|
-                            tester.write(" ");
+                        tester.writeNTimes(" ", max_line_length + 2);
+                    },
+                    // space
+                    0x20 => {
+                        tester.write(whitespace_style ++ "␠" ++ styles.reset);
+                        index += 1;
+                        column += 1;
                     },
                     0x21...0x7E => {
                         tester.write(&[_]u8{string[index]});
@@ -255,17 +267,19 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                         column += 1;
                     },
                     0x7F => {
-                        tester.write(code_style ++ "␡" ++ styles.reset);
+                        tester.write(delete_style ++ "␡" ++ styles.reset);
                         index += 1;
                         column += 1;
                     },
                     0x80...0xFF => {
-                        tester.write(code_style ++ "�" ++ styles.reset);
+                        tester.write(invalid_style ++ "�" ++ styles.reset);
                         index += 1;
                         column += 1;
                     },
                 }
             }
+
+            tester.write("\n");
         }
 
         fn expectEqualInternal(tester: *Self, expected: anytype, actual: anytype) bool {
@@ -395,7 +409,6 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             if (isComptime())
                 return;
 
-            tester.write("\n");
             std.debug.writeCurrentStackTrace(
                 tester.writer(),
                 std.debug.getSelfDebugInfo() catch root.oom(),
@@ -523,40 +536,50 @@ const styles = struct {
 
     const line = dim ++ bold;
     const title = red ++ bold;
-    const info = blue ++ bold;
+    const info = cyan ++ bold;
     const debug = bold;
     const warn = yellow ++ bold;
     const err = red ++ bold;
 };
-const separators = struct {
-    const tester_has_error_messages = std.fmt.comptimePrint(
-        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Error Message{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
-        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
-    );
-    const tester_expect_stack_trace = std.fmt.comptimePrint(
-        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Expect Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
-        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
-    );
-    const tester_report_stack_trace = std.fmt.comptimePrint(
-        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Report Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
-        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
-    );
-    const tester_deinit_stack_trace = std.fmt.comptimePrint(
-        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Deinit Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
-        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
-    );
-    const tester_init_stack_trace = std.fmt.comptimePrint(
-        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Tester Init Stack Trace{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
-        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
-    );
-    const expected_string = std.fmt.comptimePrint(
-        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Expected String{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
-        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
-    );
-    const actual_string = std.fmt.comptimePrint(
-        "\n{s}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ {s}Actual String{s} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{s}\n",
-        .{ styles.reset ++ styles.line, styles.reset ++ styles.title, styles.reset ++ styles.line, styles.reset },
-    );
+const Separator = struct {
+    string: []const u8,
+
+    fn from(comptime title: []const u8) Separator {
+        comptime {
+            const actual_title = if (max_width - 12 < title.len)
+                title[0 .. max_width - 15] ++ "..."
+            else
+                title;
+
+            const lines_width = max_width - actual_title.len - 2;
+            const left_line_width = lines_width / 2;
+            const right_line_width = lines_width - left_line_width;
+            const left_line = "━" ** left_line_width;
+            const right_line = "━" ** right_line_width;
+            return Separator{ .string = std.fmt.comptimePrint(
+                "\n{s}{s} {s}{s}{s} {s}{s}\n",
+                .{
+                    styles.reset ++ styles.line,  left_line,
+                    styles.reset ++ styles.title, title,
+                    styles.reset ++ styles.line,  right_line,
+                    styles.reset,
+                },
+            ) };
+        }
+    }
+
+    pub const untitled = Separator{ .string = "\n" ++
+        styles.reset ++ styles.line ++
+        "━" ** max_width ++ styles.reset ++
+        "\n" };
+    pub const tester_has_error_messages = Separator.from("Tester Error Messages");
+    pub const tester_expect_stack_trace = Separator.from("Tester Expect Stack Trace");
+    pub const tester_report_stack_trace = Separator.from("Tester Report Stack Trace");
+    pub const tester_deinit_stack_trace = Separator.from("Tester Deinit Stack Trace");
+    pub const tester_init_stack_trace = Separator.from("Tester Init Stack Trace");
+    pub const expected_string = Separator.from("Expected String");
+    pub const actual_string = Separator.from("Actual String");
+    pub const unexpected_string_error = Separator.from("Unexpected String Error");
 };
 
 const expect_equal_messages = .{
@@ -721,14 +744,12 @@ test "Tester(...).expectEqualAsciiString" {
     var t = Tester(.at_runtime).init();
     defer t.deinit();
 
-    t.debug("Hello world!", .{});
-    t.info("I'm a barbie girl!", .{});
-    t.warn("In a barbie world!", .{});
-    t.err("In a barbie world!", .{});
+    t.debug("I'm a barbie girl,", .{});
+    t.info("In a barbie world!", .{});
+    t.warn("Life in plastic,", .{});
+    t.err("It's fantastic!", .{});
 
-    t.expectEqual(true, false);
-
-    t.writeAsciiString("\n\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F" ++
+    t.expectEqualAsciiStrings("", "\n\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F" ++
         "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F" ++
         "\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2A\x2B\x2C\x2D\x2E\x2F" ++
         "\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3A\x3B\x3C\x3D\x3E\x3F" ++
@@ -744,4 +765,6 @@ test "Tester(...).expectEqualAsciiString" {
         "\xD0\xD1\xD2\xD3\xD4\xD5\xD6\xD7\xD8\xD9\xDA\xDB\xDC\xDD\xDE\xDF" ++
         "\xE0\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xEB\xEC\xED\xEE\xEF" ++
         "\xF0\xF1\xF2\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA\xFB\xFC\xFD\xFE\xFF");
+
+    t.expectEqualAsciiStrings("Hello world" ++ "\x08" ** 100, "\x08" ** 500);
 }
