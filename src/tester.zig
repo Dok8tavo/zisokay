@@ -305,9 +305,9 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                     tester.err(expect_equal_messages.value, .{ expected_as_t, actual_as_t });
                     return false;
                 },
-                .vector, .array => for (expected_as_t, actual_as_t, 1..) |expected_item, actual_item, number| {
-                    if (!tester.expectEqualInternal(expected_item, actual_item)) {
-                        tester.info(expect_equal_messages.which_item, .{ number, @tagName(t_info) });
+                inline .vector, .array => |va| for (0..va.len) |index| {
+                    if (!tester.expectEqualInternal(expected_as_t[index], actual_as_t[index])) {
+                        tester.info(expect_equal_messages.which_item, .{ index + 1, @tagName(t_info) });
                         break false;
                     }
                 } else true,
