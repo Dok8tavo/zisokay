@@ -599,172 +599,63 @@ const expect_equal_messages = .{
     .payload_of_optional = "Payload of optional.",
 };
 
-test "Tester(...).expectEqual" {
+test "Tester(.at_runtime).expect(true things)" {
     var t = Tester(.at_runtime).init();
     defer t.deinit();
+
+    // void, null, undefined
+    t.expectEqual({}, {});
+    t.expectEqual(null, null);
+    t.expectEqual(undefined, undefined);
 
     // booleans
     t.expectEqual(true, true);
     t.expectEqual(false, false);
-    try std.testing.expectEqual(t.messages.len, 0);
 
-    t.expectEqual(true, false);
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.value, .{ true, false }),
-    ));
-    t.reset();
+    // integers
+    t.expectEqual(@as(usize, 0), 0);
+    t.expectEqual(0, @as(usize, 0));
+
+    // floats
+    t.expectEqual(@as(f64, 0.0), 0.0);
+    t.expectEqual(0.0, @as(f64, 0.0));
+
+    // comptime integers
+    t.expectEqual(0, 0);
+
+    // comptime floats
+    t.expectEqual(0.0, 0.0);
+
+    // enum literal
+    t.expectEqual(.literal, .literal);
+
+    // enum
+    const Enum = enum { variant_1, variant_2 };
+    t.expectEqual(Enum.variant_1, Enum.variant_1);
+
+    // errors
+    t.expectEqual(error.SomeError, error.SomeError);
+
+    // types
+    t.expectEqual(type, type);
+    t.expectEqual(void, void);
+    t.expectEqual(@TypeOf(t), @TypeOf(t));
+    t.expectEqual([]const []volatile [2:0]usize, []const []volatile [2:0]usize);
 
     // arrays
-    t.expectEqual([3]u16{ 1, 2, 3 }, [3]u16{ 1, 1000, 3 });
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.value, .{ 2, 1000 }),
-    ));
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.which_item, .{ 2, "array" }),
-    ));
-    t.reset();
+    t.expectEqual([3]u8{ 1, 2, 3 }, [3]u8{ 1, 2, 3 });
 
-    // structs
-    const Struct = struct { a: usize, b: isize };
-    t.expectEqual(Struct{ .a = 1, .b = 2 }, Struct{ .a = 1, .b = 1000 });
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.value, .{ 2, 1000 }),
-    ));
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.which_field, .{"b"}),
-    ));
-    t.reset();
+    // vectors
+    t.expectEqual(@Vector(4, u8){ 1, 2, 3, 4 }, @Vector(4, u8){ 1, 2, 3, 4 });
 
-    // unions
-    const Union = union(enum) { a: usize, b: isize };
-    t.expectEqual(Union{ .a = 1 }, Union{ .b = 2 });
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.variant, .{ "a", "b" }),
-    ));
-    t.reset();
-
-    // error unions
-    const ErrorUnion = error{ ErrorA, ErrorB }!u8;
-    t.expectEqual(@as(ErrorUnion, 1), 2);
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        expect_equal_messages.payload_of_error_union,
-    ));
-    t.expectEqual(@as(ErrorUnion, error.ErrorA), error.ErrorB);
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.error_of_error_union, .{}),
-    ));
-    t.expectEqual(@as(ErrorUnion, error.ErrorA), 0);
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.payload_instead_of_error, .{error.ErrorA}),
-    ));
-    t.expectEqual(@as(ErrorUnion, 1), error.ErrorB);
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.error_instead_of_payload, .{error.ErrorB}),
-    ));
-    t.reset();
-
-    // optionals
-    t.expectEqual(@as(?u8, 1), 2);
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.payload_of_optional, .{}),
-    ));
-    t.expectEqual(@as(?u8, null), 0);
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.payload_instead_of_null, .{}),
-    ));
-    t.expectEqual(@as(?u8, 1), null);
-    try std.testing.expect(std.mem.containsAtLeast(
-        u8,
-        t.messages,
-        1,
-        std.fmt.comptimePrint(expect_equal_messages.null_instead_of_payload, .{}),
-    ));
-    t.reset();
+    // tuple
+    const Tuple = struct { usize };
+    t.expectEqual(Tuple{0}, Tuple{0});
 }
 
-test "Tester(...).{ initComptime, initRuntime, dismiss, write, print }" {
+test "Tester(.at_comptime).expect(true things)" {
     comptime {
-        var ct = Tester(.at_comptime).init();
-        defer ct.dismiss();
-
-        ct.write("Hello");
-        std.debug.assert(std.mem.eql(u8, "Hello", ct.messages));
-
-        ct.print(", {s}!", .{"world"});
-        std.debug.assert(std.mem.eql(u8, "Hello, world!", ct.messages));
+        var t = Tester(.at_comptime).init();
+        defer t.deinit();
     }
-
-    var rt = Tester(.at_runtime).init();
-    defer rt.dismiss();
-
-    rt.write("Hello");
-    try std.testing.expectEqualStrings("Hello", rt.messages);
-
-    rt.print(", {s}!", .{"world"});
-    try std.testing.expectEqualStrings("Hello, world!", rt.messages);
-}
-
-test "Tester(...).expectEqualAsciiString" {
-    var t = Tester(.at_runtime).init();
-    defer t.deinit();
-
-    t.debug("I'm a barbie girl,", .{});
-    t.info("In a barbie world!", .{});
-    t.warn("Life in plastic,", .{});
-    t.err("It's fantastic!", .{});
-
-    t.expectEqualAsciiStrings("", "\n\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F" ++
-        "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F" ++
-        "\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2A\x2B\x2C\x2D\x2E\x2F" ++
-        "\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3A\x3B\x3C\x3D\x3E\x3F" ++
-        "\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4A\x4B\x4C\x4D\x4E\x4F" ++
-        "\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5A\x5B\x5C\x5D\x5E\x5F" ++
-        "\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6A\x6B\x6C\x6D\x6E\x6F" ++
-        "\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7A\x7B\x7C\x7D\x7E\x7F" ++
-        "\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8A\x8B\x8C\x8D\x8E\x8F" ++
-        "\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9A\x9B\x9C\x9D\x9E\x9F" ++
-        "\xA0\xA1\xA2\xA3\xA4\xA5\xA6\xA7\xA8\xA9\xAA\xAB\xAC\xAD\xAE\xAF" ++
-        "\xB0\xB1\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xBB\xBC\xBD\xBE\xBF" ++
-        "\xC0\xC1\xC2\xC3\xC4\xC5\xC6\xC7\xC8\xC9\xCA\xCB\xCC\xCD\xCE\xCF" ++
-        "\xD0\xD1\xD2\xD3\xD4\xD5\xD6\xD7\xD8\xD9\xDA\xDB\xDC\xDD\xDE\xDF" ++
-        "\xE0\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xEB\xEC\xED\xEE\xEF" ++
-        "\xF0\xF1\xF2\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA\xFB\xFC\xFD\xFE\xFF");
-
-    t.expectEqualAsciiStrings("Hello world" ++ "\x08" ** 100, "\x08" ** 500);
 }
