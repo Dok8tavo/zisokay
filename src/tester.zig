@@ -291,7 +291,6 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                 .bool,
                 .comptime_float,
                 .comptime_int,
-                .@"enum",
                 .enum_literal,
                 .error_set,
                 .float,
@@ -303,6 +302,42 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
 
                     tester.write(Separator.unexpected_value_error.string ++ "\n");
                     tester.err(expect_equal_messages.value, .{ expected_as_t, actual_as_t });
+                    return false;
+                },
+                .@"enum" => |enum_info| if (expected_as_t == actual_as_t) true else {
+                    tester.write(Separator.unexpected_value_error.string ++ "\n");
+                    inline for (enum_info.fields) |expected_field| if (expected_field.value == @intFromEnum(expected_as_t)) {
+                        inline for (enum_info.fields) |actual_field| if (actual_field.value == @intFromEnum(actual_as_t)) {
+                            tester.err(
+                                expect_equal_messages.enum_value_str_str,
+                                .{ expected_field.name, actual_field.name },
+                            );
+
+                            return false;
+                        };
+
+                        tester.err(
+                            expect_equal_messages.enum_value_str_any,
+                            .{ expected_field.name, @intFromEnum(actual_as_t) },
+                        );
+
+                        return false;
+                    };
+
+                    inline for (enum_info.fields) |actual_field| if (actual_field.value == @intFromEnum(actual_as_t)) {
+                        tester.err(
+                            expect_equal_messages.enum_value_any_str,
+                            .{ @intFromEnum(expected_as_t), actual_field.name },
+                        );
+
+                        return false;
+                    };
+
+                    tester.err(
+                        expect_equal_messages.enum_value_any_any,
+                        .{ @intFromEnum(expected_as_t), @intFromEnum(actual_as_t) },
+                    );
+
                     return false;
                 },
                 inline .vector, .array => |va| for (0..va.len) |index| {
@@ -603,6 +638,10 @@ const Separator = struct {
 const expect_equal_messages = .{
     // those are errors
     .value = "Expected value `{any}`, got `{any}`!",
+    .enum_value_any_any = "Expected enum value `enum({any})`, got `enum({any})`!",
+    .enum_value_str_any = "Expected enum value `.{s}`, got `enum({any})`!",
+    .enum_value_any_str = "Expected enum value `enum({any})`, got `.{s}`!",
+    .enum_value_str_str = "Expected enum value `.{s}`, got `.{s}`!",
     .variant = "Expected union variant `.{s}`, got `.{s}`!",
     .error_instead_of_payload = "Expected payload of error_union, got error `{any}`!",
     .payload_instead_of_error = "Expected error `{any}` of error_union, got payload!",
@@ -616,6 +655,28 @@ const expect_equal_messages = .{
     .error_of_error_union = "Error of error union.",
     .payload_of_optional = "Payload of optional.",
 };
+
+test "Tester(.at_runtime).expectEqual(some enum, other enum)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    const Enum = enum(u8) { variant1, variant2, _ };
+
+    t.expectEqual(Enum.variant1, Enum.variant1);
+    t.expectEqual(Enum.variant1, @as(Enum, @enumFromInt(2)));
+}
+
+test "Tester(.at_comptime).expectEqual(some enum, other enum)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        const Enum = enum(u8) { variant1, variant2, _ };
+
+        t.expectEqual(Enum.variant1, Enum.variant1);
+        t.expectEqual(Enum.variant1, @as(Enum, @enumFromInt(2)));
+    }
+}
 
 // why would you do that?
 test "Tester(.at_runtime).expectEqual(some comptime_float, other comptime_float)" {
