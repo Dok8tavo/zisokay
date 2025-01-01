@@ -746,6 +746,12 @@ test "Tester(.at_runtime).expectEqual(some thing, same thing)" {
     // errors
     t.expectEqual(error.SomeError, error.SomeError);
 
+    // errors from different sets
+    const Set1 = error{Error};
+    const Set2 = error{Error};
+    t.expectEqual(Set1.Error, Set2.Error);
+    t.expectEqual(Set1.Error, error.Error);
+
     // types
     t.expectEqual(type, type);
     t.expectEqual(void, void);
@@ -817,6 +823,12 @@ test "Tester(.at_comptime).expectEqual(some thing, same thing)" {
 
         // errors
         t.expectEqual(error.SomeError, error.SomeError);
+
+        // errors from different sets
+        const Set1 = error{Error};
+        const Set2 = error{Error};
+        t.expectEqual(Set1.Error, Set2.Error);
+        t.expectEqual(Set1.Error, error.Error);
 
         // types
         t.expectEqual(type, type);
