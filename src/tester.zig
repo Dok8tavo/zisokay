@@ -617,6 +617,44 @@ const expect_equal_messages = .{
     .payload_of_optional = "Payload of optional.",
 };
 
+// why would you do that?
+test "Tester(.at_runtime).expectEqual(some comptime_float, other comptime_float)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(23.29, 31.37);
+    t.expectEqual(41.43, 47.53);
+}
+
+test "Tester(.at_comptime).expectEqual(some comptime_float, other comptime_float)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(23.29, 31.37);
+        t.expectEqual(41.43, 47.53);
+    }
+}
+
+// seriously, why would you do that?
+test "Tester(.at_runtime).expectEqual(some comptime_int, other comptime_int)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(11, 13);
+    t.expectEqual(17, 19);
+}
+
+test "Tester(.at_comptime).expectEqual(some comptime_int, other comptime_int)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(2, 3);
+        t.expectEqual(5, 7);
+    }
+}
+
 test "Tester(.at_runtime).expectEqual(some float, other float)" {
     var t = Tester(.at_runtime).init();
     defer t.dismiss();
