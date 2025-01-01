@@ -66,13 +66,14 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                 return;
 
             if (isComptime()) root.compileError(
-                Separator.tester_has_error_messages.string ++ "{s}",
+                Separator.tester_error_messages.string ++ "{s}" ++ Separator.deinit_stack_trace.string,
                 .{tester.messages},
             ) else {
                 std.debug.print(
-                    Separator.tester_has_error_messages.string ++ "{s}" ++
-                        Separator.tester_init_stack_trace.string ++ "{s}" ++
-                        Separator.tester_deinit_stack_trace.string,
+                    Separator.tester_error_messages.string ++ "{s}" ++
+                        Separator.tester_stack_traces.string ++
+                        Separator.init_stack_trace.string ++ "{s}" ++
+                        Separator.deinit_stack_trace.string,
                     .{ tester.messages, tester.init_stack_trace.items },
                 );
 
@@ -82,17 +83,18 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
 
         pub fn report(tester: *Self) void {
             if (isComptime()) root.compileError(
-                Separator.tester_has_error_messages.string ++ "{s}\n",
+                Separator.tester_error_messages.string ++ "{s}" ++ Separator.report_stack_trace.string,
                 .{tester.messages},
             ) else {
                 std.debug.print(
-                    Separator.tester_has_error_messages.string ++ "{s}" ++
-                        Separator.tester_report_stack_trace.string,
+                    Separator.tester_error_messages.string ++ "{s}" ++
+                        Separator.tester_stack_traces.string ++
+                        Separator.report_stack_trace.string,
                     .{tester.messages},
                 );
 
                 std.debug.dumpCurrentStackTrace(@returnAddress());
-                std.debug.print(Separator.tester_init_stack_trace.string, .{});
+                std.debug.print(Separator.init_stack_trace.string, .{});
                 std.debug.print("{s}\n", .{tester.init_stack_trace.items});
             }
 
@@ -130,14 +132,8 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
         }
 
         pub fn expectEqual(tester: *Self, expected: anytype, actual: anytype) void {
-            if (!tester.expectEqualInternal(expected, actual)) {
-                if (isComptime()) {
-                    tester.write(Separator.tester_deinit_stack_trace.string);
-                    return;
-                }
-                tester.write(Separator.tester_expect_stack_trace.string);
+            if (!tester.expectEqualInternal(expected, actual))
                 tester.writeCurrentStackTrace();
-            }
         }
 
         pub fn expectTrue(tester: *Self, condition: bool) void {
@@ -302,6 +298,7 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                     if (expected_as_t == actual_as_t)
                         return true;
 
+                    tester.write(Separator.unexpected_value_error.string);
                     tester.err(expect_equal_messages.value, .{ expected_as_t, actual_as_t });
                     return false;
                 },
@@ -326,6 +323,7 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                     const actual_tag = std.meta.activeTag(actual_as_t);
                     const expected_tag = std.meta.activeTag(expected_as_t);
                     if (actual_tag != expected_tag) {
+                        tester.write(Separator.unexpected_value_error.string);
                         tester.err(expect_equal_messages.variant, .{ @tagName(expected_tag), @tagName(actual_tag) });
                         return false;
                     }
@@ -351,11 +349,13 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                         tester.info(expect_equal_messages.payload_of_error_union, .{});
                         return false;
                     } else |actual_error| {
+                        tester.write(Separator.unexpected_value_error.string);
                         tester.err(expect_equal_messages.error_instead_of_payload, .{actual_error});
                         return false;
                     }
                 } else |expected_error| {
                     if (actual_as_t) |_| {
+                        tester.write(Separator.unexpected_value_error.string);
                         tester.err(expect_equal_messages.payload_instead_of_error, .{expected_error});
                         return false;
                     } else |actual_error| {
@@ -374,10 +374,12 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                         tester.info(expect_equal_messages.payload_of_optional, .{});
                         return false;
                     } else {
+                        tester.write(Separator.unexpected_value_error.string);
                         tester.err(expect_equal_messages.null_instead_of_payload, .{});
                         return false;
                     }
                 } else if (actual_as_t) |_| {
+                    tester.write(Separator.unexpected_value_error.string);
                     tester.err(expect_equal_messages.payload_instead_of_null, .{});
                     return false;
                 } else true,
@@ -480,7 +482,9 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                 \\- `Tester(.{s}).init{s}()`,
                 \\{s}
             , if (!is_comptime) .{
-                "compile-time", "at_comptime", "at_comptime", "Comptime", "",
+                "compile-time", "at_comptime",
+                "at_comptime",  "Comptime",
+                "",
             } else .{
                 "runtime",                                           "at_runtime",
                 "at_comptime",                                       "Runtime",
@@ -545,18 +549,30 @@ const styles = struct {
 const Separator = struct {
     string: []const u8,
 
-    fn from(comptime title: []const u8) Separator {
+    pub const Line = enum {
+        simple,
+        thick,
+        double,
+    };
+
+    fn from(comptime title: []const u8, comptime line: Line) Separator {
         comptime {
             const actual_title = if (max_width - 12 < title.len)
                 title[0 .. max_width - 15] ++ "..."
             else
                 title;
 
+            const line_char = switch (line) {
+                .simple => "─",
+                .thick => "━",
+                .double => "═",
+            };
+
             const lines_width = max_width - actual_title.len - 2;
             const left_line_width = lines_width / 2;
             const right_line_width = lines_width - left_line_width;
-            const left_line = "━" ** left_line_width;
-            const right_line = "━" ** right_line_width;
+            const left_line = line_char ** left_line_width;
+            const right_line = line_char ** right_line_width;
             return Separator{ .string = std.fmt.comptimePrint(
                 "\n{s}{s} {s}{s}{s} {s}{s}\n",
                 .{
@@ -569,18 +585,15 @@ const Separator = struct {
         }
     }
 
-    pub const untitled = Separator{ .string = "\n" ++
-        styles.reset ++ styles.line ++
-        "━" ** max_width ++ styles.reset ++
-        "\n" };
-    pub const tester_has_error_messages = Separator.from("Tester Error Messages");
-    pub const tester_expect_stack_trace = Separator.from("Tester Expect Stack Trace");
-    pub const tester_report_stack_trace = Separator.from("Tester Report Stack Trace");
-    pub const tester_deinit_stack_trace = Separator.from("Tester Deinit Stack Trace");
-    pub const tester_init_stack_trace = Separator.from("Tester Init Stack Trace");
-    pub const expected_string = Separator.from("Expected String");
-    pub const actual_string = Separator.from("Actual String");
-    pub const unexpected_string_error = Separator.from("Unexpected String Error");
+    pub const tester_stack_traces = Separator.from("Tester: Stack Traces", .thick);
+    pub const tester_error_messages = Separator.from("Tester: Error Messages", .thick);
+    pub const report_stack_trace = Separator.from("Report Stack Trace", .double);
+    pub const deinit_stack_trace = Separator.from("Deinit Stack Trace", .double);
+    pub const init_stack_trace = Separator.from("Init Stack Trace", .double);
+    pub const expected_string = Separator.from("Expected String", .simple);
+    pub const actual_string = Separator.from("Actual String", .simple);
+    pub const unexpected_string_error = Separator.from("Unexpected String Error", .simple);
+    pub const unexpected_value_error = Separator.from("Unexpected Value Error", .simple);
 };
 
 const expect_equal_messages = .{
@@ -599,6 +612,24 @@ const expect_equal_messages = .{
     .error_of_error_union = "Error of error union.",
     .payload_of_optional = "Payload of optional.",
 };
+
+test "Tester(.at_runtime).expectEqual(some bool, other bool)" {
+    var t = Tester(.at_runtime).init();
+    defer t.deinit();
+
+    t.expectEqual(false, true);
+    t.expectEqual(true, false);
+}
+
+test "Tester(.at_comptime).expectEqual(some bool, other bool)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(false, true);
+        t.expectEqual(true, false);
+    }
+}
 
 test "Tester(.at_runtime).expectEqual(some thing, same thing)" {
     var t = Tester(.at_runtime).init();
