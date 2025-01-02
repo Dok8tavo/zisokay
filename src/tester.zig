@@ -342,13 +342,16 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
                 },
                 inline .vector, .array => |va| for (0..va.len) |index| {
                     if (!tester.expectEqualInternal(expected_as_t[index], actual_as_t[index])) {
-                        tester.info(expect_equal_messages.which_item, .{ index + 1, @tagName(t_info) });
+                        tester.info(expect_equal_messages.which_item, .{ index, @tagName(t_info) });
                         break false;
                     }
                 } else true,
                 .@"struct" => |struct_info| inline for (struct_info.fields) |field| {
                     if (!tester.expectEqualInternal(@field(expected_as_t, field.name), @field(actual_as_t, field.name))) {
-                        tester.info(expect_equal_messages.which_field, .{field.name});
+                        tester.info(expect_equal_messages.which_field, if (struct_info.is_tuple)
+                            .{ "at index ", field.name, "", "tuple" }
+                        else
+                            .{ "`.", field.name, "`", "struct" });
                         break false;
                     }
                 } else true,
@@ -648,8 +651,8 @@ const expect_equal_messages = .{
     .null_instead_of_payload = "Expected payload of optional, got `null`!",
     .payload_instead_of_null = "Expected `null`, got payload of optional!",
     // those are additional informations
-    .which_item = "Item {} of the {s}.",
-    .which_field = "Field `.{s}` of the struct.",
+    .which_item = "Item at index {} of the {s}.",
+    .which_field = "Field {s}{s}{s} of the {s}.",
     .which_variant = "Variant `.{s}` of the union.",
     .payload_of_error_union = "Payload of error union.",
     .error_of_error_union = "Error of error union.",
@@ -812,10 +815,58 @@ test "Tester(.at_comptime).expectEqual(some thing, same thing)" {
     }
 }
 
+test "Tester(.at_runtime).expectEqual(some tuple, other tuple)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    const Tuple = struct { bool, [2]u8 };
+
+    t.expectEqual(Tuple{ true, .{ 'E', 'O' } }, Tuple{ false, .{ 'E', 'O' } });
+    t.expectEqual(Tuple{ true, .{ 'A', 'B' } }, Tuple{ true, .{ 'A', 'C' } });
+}
+
+test "Tester(.at_comptime).expectEqual(some tuple, other tuple)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        const Tuple = struct { bool, [2]u8 };
+
+        t.expectEqual(Tuple{ true, .{ 'E', 'O' } }, Tuple{ false, .{ 'E', 'O' } });
+        t.expectEqual(Tuple{ true, .{ 'A', 'B' } }, Tuple{ true, .{ 'A', 'C' } });
+    }
+}
+
+test "Tester(.at_comptime).expectEqual(some array, other array)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual([_]isize{ 1, -1 }, .{ -1, 1 });
+        t.expectEqual([_]u8{ 'H', 'e', 'l', 'l', 'o' }, [_]u8{ 'H', 'e', 'l', 'l', '!' });
+        t.expectEqual(
+            [_]@Vector(2, bool){ .{ true, false }, .{ false, true } },
+            [_]@Vector(2, bool){ .{ true, false }, .{ false, false } },
+        );
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some array, other array)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual([_]isize{ 1, -1 }, .{ -1, 1 });
+    t.expectEqual([_]u8{ 'H', 'e', 'l', 'l', 'o' }, [_]u8{ 'H', 'e', 'l', 'l', '!' });
+    t.expectEqual(
+        [_]@Vector(2, bool){ .{ true, false }, .{ false, true } },
+        [_]@Vector(2, bool){ .{ true, false }, .{ false, false } },
+    );
+}
+
 test "Tester(.at_comptime).expectEqual(some vector, other vector)" {
     comptime {
         var t = Tester(.at_comptime).init();
-        defer t.deinit();
+        defer t.dismiss();
 
         const VectorInt = @Vector(2, isize);
         const VectorBool = @Vector(2, bool);
