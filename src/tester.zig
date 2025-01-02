@@ -815,6 +815,26 @@ test "Tester(.at_comptime).expectEqual(some thing, same thing)" {
     }
 }
 
+test "Tester(.comptime_int).expectEqual(some optional, other optional)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(@as(?u8, 0), 1);
+        t.expectEqual(@as(?u8, null), 0);
+        t.expectEqual(@as(?u8, 0), null);
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some optional, other optional)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(@as(?u8, 0), 1);
+    t.expectEqual(@as(?u8, null), 0);
+    t.expectEqual(@as(?u8, 0), null);
+}
+
 test "Tester(.at_runtime).expectEqual(some error union, other error union)" {
     var t = Tester(.at_runtime).init();
     defer t.dismiss();
