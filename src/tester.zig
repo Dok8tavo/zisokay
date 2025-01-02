@@ -815,6 +815,28 @@ test "Tester(.at_comptime).expectEqual(some thing, same thing)" {
     }
 }
 
+test "Tester(.at_comptime).expectEqual(some union, other union)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        const Union = union(enum) { a: usize, b: usize };
+
+        t.expectEqual(Union{ .a = 0 }, Union{ .b = 0 });
+        t.expectEqual(Union{ .a = 1 }, Union{ .a = 10 });
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some union, other union)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    const Union = union(enum) { a: usize, b: usize };
+
+    t.expectEqual(Union{ .a = 0 }, Union{ .b = 0 });
+    t.expectEqual(Union{ .a = 1 }, Union{ .a = 10 });
+}
+
 test "Tester(.at_comptime).expectEqual(some struct, other struct)" {
     comptime {
         var t = Tester(.at_comptime).init();
