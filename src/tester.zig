@@ -656,120 +656,6 @@ const expect_equal_messages = .{
     .payload_of_optional = "Payload of optional.",
 };
 
-test "Tester(.at_runtime).expectEqual(some enum, other enum)" {
-    var t = Tester(.at_runtime).init();
-    defer t.dismiss();
-
-    const Enum = enum(u8) { variant1, variant2, _ };
-
-    t.expectEqual(Enum.variant1, Enum.variant1);
-    t.expectEqual(Enum.variant1, @as(Enum, @enumFromInt(2)));
-}
-
-test "Tester(.at_comptime).expectEqual(some enum, other enum)" {
-    comptime {
-        var t = Tester(.at_comptime).init();
-        defer t.dismiss();
-
-        const Enum = enum(u8) { variant1, variant2, _ };
-
-        t.expectEqual(Enum.variant1, Enum.variant1);
-        t.expectEqual(Enum.variant1, @as(Enum, @enumFromInt(2)));
-    }
-}
-
-// why would you do that?
-test "Tester(.at_runtime).expectEqual(some comptime_float, other comptime_float)" {
-    var t = Tester(.at_runtime).init();
-    defer t.dismiss();
-
-    t.expectEqual(23.29, 31.37);
-    t.expectEqual(41.43, 47.53);
-}
-
-test "Tester(.at_comptime).expectEqual(some comptime_float, other comptime_float)" {
-    comptime {
-        var t = Tester(.at_comptime).init();
-        defer t.dismiss();
-
-        t.expectEqual(23.29, 31.37);
-        t.expectEqual(41.43, 47.53);
-    }
-}
-
-// seriously, why would you do that?
-test "Tester(.at_runtime).expectEqual(some comptime_int, other comptime_int)" {
-    var t = Tester(.at_runtime).init();
-    defer t.dismiss();
-
-    t.expectEqual(11, 13);
-    t.expectEqual(17, 19);
-}
-
-test "Tester(.at_comptime).expectEqual(some comptime_int, other comptime_int)" {
-    comptime {
-        var t = Tester(.at_comptime).init();
-        defer t.dismiss();
-
-        t.expectEqual(2, 3);
-        t.expectEqual(5, 7);
-    }
-}
-
-test "Tester(.at_runtime).expectEqual(some float, other float)" {
-    var t = Tester(.at_runtime).init();
-    defer t.dismiss();
-
-    t.expectEqual(@as(f32, 1.610), @as(f32, 1.611));
-    t.expectEqual(@as(f32, 3.141), @as(f32, 3.142));
-}
-
-test "Tester(.at_comptime).expectEqual(some float, other float)" {
-    comptime {
-        var t = Tester(.at_comptime).init();
-        defer t.dismiss();
-
-        t.expectEqual(@as(f32, 1.610), @as(f32, 1.611));
-        t.expectEqual(@as(f32, 3.141), @as(f32, 3.142));
-    }
-}
-
-test "Tester(.at_runtime).expectEqual(some int, other int)" {
-    var t = Tester(.at_runtime).init();
-    defer t.dismiss();
-
-    t.expectEqual(@as(i32, 0), @as(i64, 1));
-    t.expectEqual(@as(i32, 0), @as(i64, -1));
-}
-
-test "Tester(.at_comptime).expectEqual(some int, other int)" {
-    comptime {
-        var t = Tester(.at_comptime).init();
-        defer t.dismiss();
-
-        t.expectEqual(@as(i32, 0), @as(i64, 1));
-        t.expectEqual(@as(i32, 0), @as(i64, -1));
-    }
-}
-
-test "Tester(.at_runtime).expectEqual(some bool, other bool)" {
-    var t = Tester(.at_runtime).init();
-    defer t.dismiss();
-
-    t.expectEqual(false, true);
-    t.expectEqual(true, false);
-}
-
-test "Tester(.at_comptime).expectEqual(some bool, other bool)" {
-    comptime {
-        var t = Tester(.at_comptime).init();
-        defer t.dismiss();
-
-        t.expectEqual(false, true);
-        t.expectEqual(true, false);
-    }
-}
-
 test "Tester(.at_runtime).expectEqual(some thing, same thing)" {
     var t = Tester(.at_runtime).init();
     defer t.deinit();
@@ -923,5 +809,207 @@ test "Tester(.at_comptime).expectEqual(some thing, same thing)" {
         // optionals
         t.expectEqual(@as(?u8, 0), 0);
         t.expectEqual(@as(?u8, null), null);
+    }
+}
+
+test "Tester(.at_comptime).expectEqual(some vector, other vector)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.deinit();
+
+        const VectorInt = @Vector(2, isize);
+        const VectorBool = @Vector(2, bool);
+        const VectorFloat = @Vector(2, f32);
+
+        t.expectEqual(VectorInt{ 0, 0 }, VectorInt{ 0, 1 });
+        t.expectEqual(VectorBool{ false, false }, VectorBool{ true, false });
+        t.expectEqual(VectorFloat{ 1000, 10 }, VectorFloat{ 100, 1 });
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some vector, other vector)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    const VectorInt = @Vector(2, isize);
+    const VectorBool = @Vector(2, bool);
+    const VectorFloat = @Vector(2, f32);
+
+    t.expectEqual(VectorInt{ 0, 0 }, VectorInt{ 0, 1 });
+    t.expectEqual(VectorBool{ false, false }, VectorBool{ true, false });
+    t.expectEqual(VectorFloat{ 1000, 10 }, VectorFloat{ 100, 1 });
+}
+
+test "Tester(.at_comptime).expectEqual(some error, other error)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        const OurErrors = error{ MyError, YourError };
+        const YourErrors = error{ YourError, TheirError };
+
+        t.expectEqual(error.MyError, error.YourError);
+        t.expectEqual(OurErrors.YourError, YourErrors.TheirError);
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some error, other error)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    const OurErrors = error{ MyError, YourError };
+    const YourErrors = error{ YourError, TheirError };
+
+    t.expectEqual(error.MyError, error.YourError);
+    t.expectEqual(OurErrors.YourError, YourErrors.TheirError);
+}
+
+test "Tester(.at_comptime).expectEqual(some type, other type)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(i32, i64);
+        t.expectEqual(f32, f64);
+        t.expectEqual(struct {}, struct {});
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some type, other type)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(i32, i64);
+    t.expectEqual(f32, f64);
+    t.expectEqual(struct {}, struct {});
+}
+
+test "Tester(.at_runtime).expectEqual(some enum literal, other enum literal)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(.variant1, .variant2);
+    t.expectEqual(.variant2, .variant3);
+}
+
+test "Tester(.at_comptime).expectEqual(some enum literal, other enum literal)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(.variant1, .variant2);
+        t.expectEqual(.variant2, .variant3);
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some enum, other enum)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    const Enum = enum(u8) { variant1, variant2, _ };
+
+    t.expectEqual(Enum.variant1, Enum.variant1);
+    t.expectEqual(Enum.variant1, @as(Enum, @enumFromInt(2)));
+}
+
+test "Tester(.at_comptime).expectEqual(some enum, other enum)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        const Enum = enum(u8) { variant1, variant2, _ };
+
+        t.expectEqual(Enum.variant1, Enum.variant1);
+        t.expectEqual(Enum.variant1, @as(Enum, @enumFromInt(2)));
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some comptime_float, other comptime_float)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(23.29, 31.37);
+    t.expectEqual(41.43, 47.53);
+}
+
+test "Tester(.at_comptime).expectEqual(some comptime_float, other comptime_float)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(23.29, 31.37);
+        t.expectEqual(41.43, 47.53);
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some comptime_int, other comptime_int)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(11, 13);
+    t.expectEqual(17, 19);
+}
+
+test "Tester(.at_comptime).expectEqual(some comptime_int, other comptime_int)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(2, 3);
+        t.expectEqual(5, 7);
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some float, other float)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(@as(f32, 1.610), @as(f32, 1.611));
+    t.expectEqual(@as(f32, 3.141), @as(f32, 3.142));
+}
+
+test "Tester(.at_comptime).expectEqual(some float, other float)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(@as(f32, 1.610), @as(f32, 1.611));
+        t.expectEqual(@as(f32, 3.141), @as(f32, 3.142));
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some int, other int)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(@as(i32, 0), @as(i64, 1));
+    t.expectEqual(@as(i32, 0), @as(i64, -1));
+}
+
+test "Tester(.at_comptime).expectEqual(some int, other int)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(@as(i32, 0), @as(i64, 1));
+        t.expectEqual(@as(i32, 0), @as(i64, -1));
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some bool, other bool)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expectEqual(false, true);
+    t.expectEqual(true, false);
+}
+
+test "Tester(.at_comptime).expectEqual(some bool, other bool)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqual(false, true);
+        t.expectEqual(true, false);
     }
 }
