@@ -815,6 +815,28 @@ test "Tester(.at_comptime).expectEqual(some thing, same thing)" {
     }
 }
 
+test "Tester(.at_comptime).expectEqual(some struct, other struct)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        const Struct = struct { a: bool, b: usize };
+
+        t.expectEqual(Struct{ .a = true, .b = 7 }, Struct{ .a = true, .b = 1000 });
+        t.expectEqual(Struct{ .a = false, .b = 1234 }, Struct{ .a = true, .b = 1234 });
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some struct, other struct)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    const Struct = struct { a: bool, b: usize };
+
+    t.expectEqual(Struct{ .a = true, .b = 7 }, Struct{ .a = true, .b = 1000 });
+    t.expectEqual(Struct{ .a = false, .b = 1234 }, Struct{ .a = true, .b = 1234 });
+}
+
 test "Tester(.at_runtime).expectEqual(some tuple, other tuple)" {
     var t = Tester(.at_runtime).init();
     defer t.dismiss();
