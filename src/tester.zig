@@ -646,8 +646,8 @@ const expect_equal_messages = .{
     .enum_value_any_str = "Expected enum value `enum({any})`, got `.{s}`!",
     .enum_value_str_str = "Expected enum value `.{s}`, got `.{s}`!",
     .variant = "Expected union variant `.{s}`, got `.{s}`!",
-    .error_instead_of_payload = "Expected payload of error_union, got error `{any}`!",
-    .payload_instead_of_error = "Expected error `{any}` of error_union, got payload!",
+    .error_instead_of_payload = "Expected payload of error union, got error `{any}`!",
+    .payload_instead_of_error = "Expected error `{any}` of error union, got payload!",
     .null_instead_of_payload = "Expected payload of optional, got `null`!",
     .payload_instead_of_null = "Expected `null`, got payload of optional!",
     // those are additional informations
@@ -812,6 +812,28 @@ test "Tester(.at_comptime).expectEqual(some thing, same thing)" {
         // optionals
         t.expectEqual(@as(?u8, 0), 0);
         t.expectEqual(@as(?u8, null), null);
+    }
+}
+
+test "Tester(.at_runtime).expectEqual(some error union, other error union)" {
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    const ErrorUnion = anyerror!u8;
+    t.expectEqual(@as(ErrorUnion, error.SomeError), error.AnotherError);
+    t.expectEqual(@as(ErrorUnion, error.Error), 0);
+    t.expectEqual(@as(ErrorUnion, 0), error.Error);
+}
+
+test "Tester(.at_comptime).expectEqual(some error union, other error union)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        const ErrorUnion = anyerror!u8;
+        t.expectEqual(@as(ErrorUnion, error.SomeError), error.AnotherError);
+        t.expectEqual(@as(ErrorUnion, error.Error), 0);
+        t.expectEqual(@as(ErrorUnion, 0), error.Error);
     }
 }
 
