@@ -25,7 +25,6 @@ const eq = @import("eq.zig");
 const root = @import("root.zig");
 const std = @import("std");
 
-const Location = @import("Location.zig");
 const max_width = 100;
 
 pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
@@ -123,12 +122,15 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             const index_of_difference = for (0..min_len) |index| {
                 if (expected[index] != actual[index]) break index;
             } else if (expected.len != actual.len) min_len else return;
-            _ = index_of_difference;
 
             tester.write(Separator.unexpected_string_error.string ++ Separator.expected_string.string);
-            tester.writeAsciiString(expected);
+            tester.writeAsciiDifferenceString(expected, index_of_difference);
             tester.write(Separator.actual_string.string);
-            tester.writeAsciiString(actual);
+            tester.writeAsciiDifferenceString(actual, index_of_difference);
+
+            if (!isComptime())
+                tester.write(Separator.expect_stack_trace.string);
+            tester.writeCurrentStackTrace();
         }
 
         pub fn expectEqual(tester: *Self, expected: anytype, actual: anytype) void {
@@ -180,105 +182,144 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             for (0..n) |_| tester.write(bytes);
         }
 
-        fn writeAsciiString(tester: *Self, string: []const u8) void {
-            const code_style = styles.dim;
-            const whitespace_style = styles.green ++ styles.dim;
-            const delete_style = styles.red ++ styles.dim;
-            const invalid_style = styles.red;
+        fn writeAsciiDifferenceString(tester: *Self, string: []const u8, index_of_difference: usize) void {
+            const last_line = blk: {
+                var line: usize = 1;
+                for (string) |byte| switch (byte) {
+                    0x0A, 0x0D => line += 1,
+                    else => {},
+                };
 
-            const max_line = Location.maxLine(string);
-            const max_line_length: usize = cifers(max_line);
-            const clamp = max_width - max_line_length - 2;
-            var index: usize = 0;
-            var line: usize = 1;
-            var column: usize = 1;
-            {
-                const spaces = max_line_length - 1;
-                tester.writeNTimes(" ", spaces);
-                tester.print("{s}1:{s} ", .{ styles.dim, styles.reset });
-            }
-            while (index < string.len) {
-                if (clamp <= column) {
-                    tester.write("\n");
-                    tester.writeNTimes(" ", max_line_length + 2);
-                    column = 1;
-                }
+                break :blk line;
+            };
 
-                switch (string[index]) {
-                    0x00...0x08, 0x0C, 0x0E...0x1F => {
+            const max_prefix_length: usize = @max(cifers(last_line) + 3, 4);
+            var line_number: usize = 0;
+            var column: usize = 0;
+
+            tester.writeNewLine(max_prefix_length, &line_number);
+
+            for (string[0..index_of_difference]) |byte| {
+                tester.write(styles.green);
+                if (column + max_prefix_length == max_width)
+                    tester.writeNewLine(max_prefix_length, &line_number);
+                switch (byte) {
+                    0x00...0x08, 0x0B...0x1F, 0x7F => {
                         var symbol: [4]u8 = undefined;
-                        const l = std.unicode.utf8Encode(0x2400 + @as(u21, string[index]), &symbol) catch unreachable;
-                        tester.print("{s}{s}" ++ styles.reset, .{ switch (string[index]) {
-                            0x00...0x08, 0x0E...0x1F => code_style,
-                            0x0C => whitespace_style,
-                            else => unreachable,
-                        }, symbol[0..l] });
-                        index += 1;
+                        const len = std.unicode.utf8Encode(0x2400 + @as(u21, byte), &symbol) catch unreachable;
+                        tester.print(styles.dim ++ "{s}" ++ styles.normal, .{symbol[0..len]});
                         column += 1;
                     },
                     // horizontal tab
                     0x09 => {
-                        tester.write(whitespace_style ++ "␉" ++ styles.reset);
-                        const length = 4 - (column % 4);
-                        tester.writeNTimes(" ", length - 1);
-                        index += 1;
-                        column += length;
+                        const len = 4 - (column % 4);
+                        const max_len = max_width - max_prefix_length - column;
+                        const print_len = @min(len, max_len);
+
+                        tester.write(styles.dim);
+                        tester.writeNTimes("⇥", print_len);
+                        tester.write(styles.normal);
+                        column += print_len;
                     },
                     // line feed
                     0x0A => {
-                        tester.write(whitespace_style ++ "␤\n" ++ styles.reset);
-                        line += 1;
-                        column = 1;
-                        index += 1;
-                        const line_length = cifers(line);
-                        const spaces = max_line_length - line_length;
-                        tester.writeNTimes(" ", spaces);
-                        tester.print("{s}{}:{s} ", .{ styles.dim, line, styles.reset });
-                    },
-                    // vertical tab
-                    0x0B => {
-                        tester.write(whitespace_style ++ "␋\n" ++ styles.reset);
-                        line += 1;
-                        index += 1;
-                        const line_length = cifers(line);
-                        const spaces = max_line_length - line_length;
-                        tester.writeNTimes(" ", spaces);
-                        tester.print("{s}{}:{s} ", .{ styles.dim, line, styles.reset });
-                        tester.writeNTimes(" ", column);
-                    },
-                    // carriage return
-                    0x0D => {
-                        tester.write(delete_style ++ "␍" ++ styles.reset);
-                        index += 1;
-                        column = 1;
-                        tester.write("\n");
-                        tester.writeNTimes(" ", max_line_length + 2);
+                        tester.write(styles.dim ++ "⏎" ++ styles.normal);
+                        tester.writeNewLine(max_prefix_length, &line_number);
+                        column = 0;
                     },
                     // space
                     0x20 => {
-                        tester.write(whitespace_style ++ "␠" ++ styles.reset);
-                        index += 1;
+                        tester.write(styles.dim ++ "␣" ++ styles.normal);
                         column += 1;
                     },
+                    // printable
                     0x21...0x7E => {
-                        tester.write(&[_]u8{string[index]});
-                        index += 1;
+                        tester.write(&[_]u8{byte});
                         column += 1;
                     },
-                    0x7F => {
-                        tester.write(delete_style ++ "␡" ++ styles.reset);
-                        index += 1;
-                        column += 1;
-                    },
+                    // non-ascii
                     0x80...0xFF => {
-                        tester.write(invalid_style ++ "�" ++ styles.reset);
-                        index += 1;
+                        tester.write(styles.dim ++ "�" ++ styles.normal);
                         column += 1;
                     },
+                }
+
+                if (column + max_prefix_length == max_width) {
+                    column = 0;
+                    tester.writeNewLine(max_prefix_length, null);
+                    tester.write(styles.green ++ styles.normal);
+                }
+            }
+
+            if (string.len == index_of_difference)
+                return tester.write("\n");
+
+            for (string[index_of_difference..]) |byte| {
+                tester.write(styles.red);
+                if (column + max_prefix_length == max_width)
+                    tester.writeNewLine(max_prefix_length, &line_number);
+                switch (byte) {
+                    0x00...0x08, 0x0B...0x1F, 0x7F => {
+                        var symbol: [4]u8 = undefined;
+                        const len = std.unicode.utf8Encode(0x2400 + @as(u21, byte), &symbol) catch unreachable;
+                        tester.print(styles.dim ++ "{s}" ++ styles.normal, .{symbol[0..len]});
+                        column += 1;
+                    },
+                    // horizontal tab
+                    0x09 => {
+                        const len = 4 - (column % 4);
+                        const max_len = max_width - max_prefix_length - column;
+                        const print_len = @min(len, max_len);
+
+                        tester.write(styles.dim);
+                        tester.writeNTimes("⇥", print_len);
+                        tester.write(styles.normal);
+                        column += print_len;
+                    },
+                    // line feed
+                    0x0A => {
+                        tester.write(styles.dim ++ "⏎" ++ styles.normal);
+                        tester.writeNewLine(max_prefix_length, &line_number);
+                        column = 0;
+                    },
+                    // space
+                    0x20 => {
+                        tester.write(styles.dim ++ "␣" ++ styles.normal);
+                        column += 1;
+                    },
+                    // printable
+                    0x21...0x7E => {
+                        tester.write(&[_]u8{byte});
+                        column += 1;
+                    },
+                    // non-ascii
+                    0x80...0xFF => {
+                        tester.write(styles.dim ++ "�" ++ styles.normal);
+                        column += 1;
+                    },
+                }
+
+                if (column + max_prefix_length == max_width) {
+                    column = 0;
+                    tester.writeNewLine(max_prefix_length, null);
+                    tester.write(styles.red ++ styles.normal);
                 }
             }
 
             tester.write("\n");
+        }
+
+        fn writeNewLine(tester: *Self, max_prefix_length: usize, line_number: ?*usize) void {
+            const prefix_length = 3 + if (line_number) |ln| blk: {
+                defer ln.* += 1;
+                break :blk cifers(ln.*);
+            } else 0;
+
+            tester.write("\n" ++ styles.reset ++ styles.dim);
+            tester.writeNTimes(" ", max_prefix_length - prefix_length);
+            if (line_number) |ln|
+                tester.print("{}", .{ln.*});
+            tester.write(" │ " ++ styles.normal);
         }
 
         fn expectEqualInternal(tester: *Self, expected: anytype, actual: anytype) bool {
@@ -565,6 +606,7 @@ const styles = struct {
     const reset = "\x1B[0m";
 
     const bold = "\x1B[1m";
+    const normal = "\x1B[1;22m";
     const dim = "\x1B[2m";
     const italic = "\x1B[3m";
     const underlined = "\x1B[4m";
@@ -585,6 +627,11 @@ const styles = struct {
     const debug = bold;
     const warn = yellow ++ bold;
     const err = red ++ bold;
+
+    const code = styles.dim;
+    const whitespace = styles.green ++ styles.dim;
+    const delete = styles.red ++ styles.dim;
+    const invalid = styles.red;
 };
 
 const Separator = struct {
@@ -632,9 +679,11 @@ const Separator = struct {
     pub const deinit_stack_trace = Separator.from("Deinit Stack Trace", .double);
     pub const init_stack_trace = Separator.from("Init Stack Trace", .double);
     pub const expect_stack_trace = Separator.from("Expect Stack Trace", .simple);
-    pub const expected_string = Separator.from("Expected String", .double);
-    pub const actual_string = Separator.from("Actual String", .double);
+    pub const expected_string = Separator.from("Expected String", .simple);
+    pub const actual_string = Separator.from("Actual String", .simple);
     pub const unexpected_string_error = Separator.from("Unexpected String Error", .double);
+    pub const expected_string_line = Separator.from("Expected Line", .simple);
+    pub const actual_string_line = Separator.from("Actual Line", .simple);
     pub const unexpected_value_error = Separator.from("Unexpected Value Error", .double);
 };
 
@@ -658,6 +707,16 @@ const expect_equal_messages = .{
     .error_of_error_union = "Error of error union.",
     .payload_of_optional = "Payload of optional.",
 };
+
+test {
+    var t = Tester(.at_runtime).init();
+    defer t.deinit();
+
+    t.expectEqualAsciiStrings(
+        "Hello, world!",
+        "Hello, stupid!",
+    );
+}
 
 test "Tester(.at_runtime).expectEqual(some thing, same thing)" {
     var t = Tester(.at_runtime).init();
