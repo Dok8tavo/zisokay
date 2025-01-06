@@ -708,14 +708,54 @@ const expect_equal_messages = .{
     .payload_of_optional = "Payload of optional.",
 };
 
-test {
+test "Tester(.at_runtime).expectEqualAsciiStrings(some string, some other string)" {
     var t = Tester(.at_runtime).init();
-    defer t.deinit();
+    defer t.dismiss();
 
     t.expectEqualAsciiStrings(
-        "Hello, world!",
-        "Hello, stupid!",
+        "Simple, small string.",
+        "Simple, tiny string.",
     );
+
+    t.expectEqualAsciiStrings(
+        "This one is a very long string. You can't even fathom how long and annoying it is! " ++
+            "It's tedious how big and long it is, I can't believe it!",
+        "This one is a short string though.",
+    );
+
+    t.expectEqualAsciiStrings(
+        \\And now a multiline string.
+        \\I know you like them a lot.
+        \\Well, actually it depends whether it's a matter of aesthetics or parsing ease.
+        \\But all in all, I think they're great!
+        \\
+    , "me too");
+}
+
+test "Tester(.at_comptime).expectEqualAsciiStrings(some string, some other string)" {
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expectEqualAsciiStrings(
+            "Simple, small string.",
+            "Simple, tiny string.",
+        );
+
+        t.expectEqualAsciiStrings(
+            "This one is a very long string. You can't even fathom how long and annoying it is! " ++
+                "It's tedious how big and long it is, I can't believe it!",
+            "This one is a short string though.",
+        );
+
+        t.expectEqualAsciiStrings(
+            \\And now a multiline string.
+            \\I know you like them a lot.
+            \\Well, actually it depends whether it's a matter of aesthetics or parsing ease.
+            \\But all in all, I think they're great!
+            \\
+        , "me too");
+    }
 }
 
 test "Tester(.at_runtime).expectEqual(some thing, same thing)" {
