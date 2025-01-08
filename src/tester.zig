@@ -145,6 +145,10 @@ pub fn Tester(comptime is: enum { at_runtime, at_comptime }) type {
             tester.expectEqual(true, condition);
         }
 
+        pub fn expect(tester: *Self, comptime predicate: anytype, args: anytype) void {
+            @call(.always_inline, predicate, .{tester} ++ args);
+        }
+
         pub fn err(tester: *Self, comptime fmt: []const u8, args: anytype) void {
             tester.print(styles.reset ++ styles.err ++ "error" ++ styles.reset ++ ": " ++ fmt ++ "\n", args);
         }
@@ -707,6 +711,76 @@ const expect_equal_messages = .{
     .error_of_error_union = "Error of error union.",
     .payload_of_optional = "Payload of optional.",
 };
+
+test "Tester(...).expect(...)" {
+    const namespace = struct {
+        inline fn isPrime(tester: anytype, number: u32) void {
+            if (number <= 1) {
+                tester.write(comptime Separator.from("Expected Prime number", .double).string);
+                tester.err("The number `{}` isn't a prime number! It has {s}.", .{
+                    number,
+                    if (number == 1) "only itself as a divider" else "an infinite amount of dividers",
+                });
+                tester.write(Separator.expect_stack_trace.string);
+                tester.writeCurrentStackTrace();
+                return;
+            }
+
+            if (number == 2) return;
+
+            const float_number: f32 = @floatFromInt(number);
+            const float_sqrt_number = @sqrt(float_number);
+            const ceil_sqrt_number: u32 = @intFromFloat(@ceil(float_sqrt_number) + 1);
+
+            for (2..ceil_sqrt_number) |i| {
+                if (number % i == 0) break {
+                    tester.write(comptime Separator.from("Expected Prime number", .double).string);
+                    tester.err("The number `{}` isn't a prime Number! It has {} as a divider", .{
+                        number,
+                        i,
+                    });
+
+                    tester.write(Separator.expect_stack_trace.string);
+                    tester.writeCurrentStackTrace();
+                };
+            }
+        }
+    };
+
+    comptime {
+        var t = Tester(.at_comptime).init();
+        defer t.dismiss();
+
+        t.expect(namespace.isPrime, .{0});
+        t.expect(namespace.isPrime, .{1});
+        t.expect(namespace.isPrime, .{2});
+        t.expect(namespace.isPrime, .{3});
+        t.expect(namespace.isPrime, .{4});
+        t.expect(namespace.isPrime, .{5});
+        t.expect(namespace.isPrime, .{6});
+        t.expect(namespace.isPrime, .{7});
+        t.expect(namespace.isPrime, .{8});
+        t.expect(namespace.isPrime, .{9});
+        t.expect(namespace.isPrime, .{10});
+        t.expect(namespace.isPrime, .{11});
+    }
+
+    var t = Tester(.at_runtime).init();
+    defer t.dismiss();
+
+    t.expect(namespace.isPrime, .{0});
+    t.expect(namespace.isPrime, .{1});
+    t.expect(namespace.isPrime, .{2});
+    t.expect(namespace.isPrime, .{3});
+    t.expect(namespace.isPrime, .{4});
+    t.expect(namespace.isPrime, .{5});
+    t.expect(namespace.isPrime, .{6});
+    t.expect(namespace.isPrime, .{7});
+    t.expect(namespace.isPrime, .{8});
+    t.expect(namespace.isPrime, .{9});
+    t.expect(namespace.isPrime, .{10});
+    t.expect(namespace.isPrime, .{11});
+}
 
 test "Tester(.at_runtime).expectEqualAsciiStrings(some string, some other string)" {
     var t = Tester(.at_runtime).init();
